@@ -1,29 +1,17 @@
-  
+
 // Number of Settings
 const byte numOfSettings = 4;
 const char* namesSettings[] = {"Return", "T_set", "K_p", "K_i", "K_d", "Reset" , "Power On"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"T_current", "T_set", "Parameter", "Standby"};
-//byte addr = 0;
-//byte hoursBuf=0;
-//byte minutesBuf=0;
-//byte secondsBuf=0;
-//int correctionPause=0;
-//byte correctionHourPause=0;
 //                       {T_soll, K_p, K_i, K_d}
 int standardSettings[] = {   100,  50,  10,   5}; // TODO: EEPROM statt Definition
 int settings[4];
 int powerStates[numOfpowerStates];
 const int minSetting[] = {70, 0, 0, 0}; // "T_set", "K_p", "K_i", "K_d" 
 const int maxSetting[] = {110, 100, 100, 100}; // "T_set", "K_p", "K_i", "K_d"
-//int secsDripStart;
-// Variables for displaying total time in hrs:min:secs
-//byte runHours = 0;
-//int secsRemaining;
-//byte runMinutes = 0;
-//byte runSeconds = 0;
-//byte correctionHour;
+
 // Setting which currently is edited, = 0 if no setting is manipulated
 byte editSetting = 0;
 byte change;
@@ -59,16 +47,10 @@ unsigned long compareTime;
 double setpoint = 100;
 double input;
 double output;
-// PID PARAMETER -------------------------------------------------------------------------------
-double Kp = 50;
-double Ki = 0.1;
-double Kd = 5;
 
 int WindowSize = 500;
 unsigned long windowStartTime;
 
-
 // Variables for EEPROM
 #define EEPROM_SIZE 4
-
 

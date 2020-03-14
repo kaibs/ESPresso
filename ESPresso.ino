@@ -23,8 +23,6 @@ SH1106Wire  display(0x3c, 21,22);
 // SSR at port D25
 #define ssr 25
 
-// PID gaggiaPIT(&input, &output, &setpoint, settings[1], settings[2], settings[3], DIRECT);
-
 // init of PID 
 PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
 
@@ -88,7 +86,7 @@ void displayMainMenu(byte index) {
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
-      display.drawXbm(12, 20, 40, 40,playbutton40);
+      display.drawXbm(12, 20, 40, 40,espresso40);
       display.drawXbm(81, 25, 30,30, settingsbutton30);
       break;
     case 2:
@@ -96,7 +94,6 @@ void displayMainMenu(byte index) {
       display.drawXbm(76, 20, 40, 40, settingsbutton40);
       break;
   }
-  //Serial.println(menuCounter);
   display.display();
 }
 ///////////////////////////////displaypowerState///////////////////////////////////
@@ -114,9 +111,6 @@ void displaypowerStates(byte index) {
   }
   display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, stopbutton_10);
   display.drawString(0, 20, namespowerStates[index]);
-  // Display Value of current setting
-  Serial.println(index);
-  
   switch(index){
     case 0:
       display.drawString(50,35,String(sensors.getTempCByIndex(0)));
@@ -130,7 +124,6 @@ void displaypowerStates(byte index) {
   display.display();
 }
 
-
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 // INTERRUPT     INTERRUPT     INTERRUPT     INTERRUPT     INTERRUPT
@@ -139,7 +132,6 @@ void displaypowerStates(byte index) {
 
 void IRAM_ATTR isr_encoder () {
   portENTER_CRITICAL_ISR(&mux);
-  Serial.println("Interrupt Encoder");
   static unsigned long lastInterruptTime = 0;
   // unsigned long interruptTime = millis();
   // If interrupts come faster than 5ms, assume it's a bounce and ignore
@@ -147,20 +139,15 @@ void IRAM_ATTR isr_encoder () {
     if (digitalRead(Pin_CLK) == HIGH)
     {
       clockwise = true;
-      Serial.println("CLW");
     } else {
       anticlockwise = true;
-      Serial.println("CCLW");
     }
-    // Restrict value from 0 to +100
-    //    virtualPosition = min(100, max(0, virtualPosition));
     // Keep track of when we were here last (no more than every 5ms)
     lastInterruptTime = millis();
   }
   portEXIT_CRITICAL_ISR(&mux);
 }
 void IRAM_ATTR isr_button() {
-  Serial.println("Interrupt Clicked");
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTimeButton = 0;
   //unsigned long interruptTimeButton = millis();
@@ -169,7 +156,6 @@ void IRAM_ATTR isr_button() {
     clicked = true;
     // Keep track of when we were here last (no more than every 5ms)
     lastInterruptTimeButton = millis();
-    Serial.println("Click");
   }
   portEXIT_CRITICAL_ISR(&mux);
 }
@@ -238,7 +224,6 @@ void setup() {
   // Settings for PID
   gaggiaPIT.SetOutputLimits(0, WindowSize);
   gaggiaPIT.SetMode(AUTOMATIC);
-
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -274,6 +259,8 @@ void loop() {
         case 1: // Power On
           powerState = true;
           gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
+          //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
+          setpoint = settings[0];
           menuCounter = 0;         
           break;
         case 2: // Einstellungen
@@ -288,10 +275,6 @@ void loop() {
   }
   /////////////////////////// SETTINGS MENU /////////////////////////////
   while (settingsMenu) {
-//    settings[0] = EEPROM.read(1);
-//    settings[1] = EEPROM.read(2);
-//    settings[2] = EEPROM.read(3);
-//    settings[3] = EEPROM.read(4);
     if (clockwise) {
       if (menuCounter < numOfSettings + 2) {
         menuCounter++;
@@ -356,7 +339,6 @@ void loop() {
     }
   }
     if (clicked) {
-      Serial.println(menuCounter);
       switch (menuCounter) {
         case 0: // User choose return
           menuCounter = 1;
@@ -367,6 +349,7 @@ void loop() {
           settingsMenu = false;
           powerState = true;
           gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
+          setpoint = settings[0];
           menuCounter = 0;
           break;
         case (numOfSettings+1):
@@ -390,9 +373,6 @@ void loop() {
       }
       clicked = false;
     }
-  
-  //Serial.println(editSetting);
-
  }
   //////////////////////////////////// powerState ///////////////////////////////////////////////
   while (powerState) {
@@ -432,7 +412,6 @@ void loop() {
     Serial.print(input);
     Serial.print(",");
     Serial.println(output);
-    
     if (clicked) {
       switch (menuCounter) {
         case (numOfpowerStates): //Stop Drip button
