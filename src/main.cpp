@@ -112,6 +112,9 @@ void displaySettings(int index) {
       display.drawString(64, 25, String(settings[index - 1]));
     }  
   }
+  if(index == 5){ // Reset
+      display.drawXbm(54, 23, 20, 20, trash_20);
+  }
   display.display();
 }
 ///////////////////////////////displayMainMenu///////////////////////////////////
