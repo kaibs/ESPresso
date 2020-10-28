@@ -1,7 +1,7 @@
 
 // Number of Settings
 const byte numOfSettings = 4;
-const char* namesSettings[] = {"Return", "T_set", "K_p", "K_i", "K_d", "Reset" , "Power On"};
+const char* namesSettings[] = {"Home", "Desired Temperature", "K_P", "K_I", "K_D", "Reset"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"Current Temperature", "Desired Temperature", "Timer", "Standby"};
@@ -34,7 +34,7 @@ boolean clockwise = false;
 boolean anticlockwise = false;
 boolean powerState = false;
 
-byte xVecSymbStatus[numOfSettings + 3];
+byte xVecSymbStatus[numOfSettings + 2];
 byte lengthSymbStatus;
 byte lengthDripSymbStatus;
 byte xVecDripSymbStatus[numOfpowerStates + 2];

@@ -39,7 +39,6 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 /////////////////////////////// displayTemperature////////////////////////////////
 void displayTemperature(){
-  display.drawXbm(59, 0, 10, 10, home_10);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   int currentTemp = (int)sensors.getTempCByIndex(0);
   String current_Temp_string;
@@ -78,7 +77,8 @@ void displaySettings(int index) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
-  display.drawXbm(xVecSymbStatus[numOfSettings + 2], 54, 10, 10,playbutton_10);
+  
+  // display.drawXbm(xVecSymbStatus[numOfSettings + 2], 54, 10, 10, espresso_10);
   display.drawString(0, 20, namesSettings[index]);
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
@@ -101,6 +101,7 @@ void displayMainMenu(byte index) {
   // index == 1 -> mainMenu // Standby
   // index == 2 -> pauseMenu !! nicht mehr existent !!
   display.clear();
+  display.drawXbm(59, 0, 10, 10, home_10);
   displayTemperature();
   // switch (index) {
   //   case 1:
@@ -126,6 +127,7 @@ void displayMainMenu(byte index) {
 ///////////////////////////////displaypowerState///////////////////////////////////
 void displaypowerStates(byte index) {
   display.clear();
+  display.drawXbm(59, 0, 10, 10, espresso_10);
   displayTemperature();
   // display.drawString(0, 0, "Power ON");
   // Left Side: - middle: circle, right side: stop
@@ -284,7 +286,7 @@ void loop() {
       }
       clockwise = false;
     }
-    displayMainMenu(1); // 1 is main menu, 2 is pause menu
+    displayMainMenu(1); // 1 is main menu, 2 is Settings menu
     // If encoder Button is pressed, switch to respective menu
     if (clicked) {
       switch (menuCounter) {
@@ -295,7 +297,7 @@ void loop() {
           setpoint = settings[0];
           menuCounter = 0;         
           break;
-        case 2: // Einstellungen
+        case 2: // Settings
           settingsMenu = true;
           menuCounter = 1;
           editSetting = 0;
@@ -308,9 +310,9 @@ void loop() {
   /////////////////////////// SETTINGS MENU /////////////////////////////
   while (settingsMenu) {
     if (clockwise) {
-      if (menuCounter < numOfSettings + 2) {
+      if (menuCounter < numOfSettings + 1) {
         menuCounter++;
-      } else if (menuCounter > numOfSettings + 1) {
+      } else if (menuCounter > numOfSettings) {
         menuCounter = 0;
       }
       clockwise = false;
@@ -319,7 +321,7 @@ void loop() {
       if (menuCounter > 0) {
         menuCounter--;
       } else if (menuCounter < numOfSettings) {
-        menuCounter = numOfSettings + 2;
+        menuCounter = numOfSettings;
       }
       anticlockwise = false;
     }
@@ -377,13 +379,13 @@ void loop() {
           mainMenu = true;
           settingsMenu = false;
           break;
-        case (numOfSettings+2): // user choose power on
-          settingsMenu = false;
-          powerState = true;
-          gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
-          setpoint = settings[0];
-          menuCounter = 0;
-          break;
+        // case (numOfSettings+2): // user choose power on
+        //   settingsMenu = false;
+        //   powerState = true;
+        //   gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
+        //   setpoint = settings[0];
+        //   menuCounter = 0;
+        //   break;
         case (numOfSettings+1):
           settings[0] = standardSettings[0];
           settings[1] = standardSettings[1];
