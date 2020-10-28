@@ -169,7 +169,7 @@ void displaypowerStates(byte index) {
   displayTemperature(); // display Temperature in upper left corner
 
   // Left Side: - middle: circle, right side: stop
-  for (int i = 1; i < numOfpowerStates + 2; i++) { 
+  for (int i = 1; i < numOfpowerStates; i++) { 
     byte x = xVecDripSymbStatus[i];
     if (i == index && i < numOfpowerStates+1) {
       display.drawXbm(x, 54, 10,10,roundfilled_10);
@@ -177,28 +177,22 @@ void displaypowerStates(byte index) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
+  // Draw Home Icon to return to the main menu
   if (index == 0){
       display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10_filled);
   } else{
       display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10);
   }
+  // Draw hourglass for timer function
+  if (index == 3){
+      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10);
+  } else{
+      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10);
+  }
   // Display Name of menu in upper right corner
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.setFont(ArialMT_Plain_10);
   display.drawString(128, 0, namespowerStates[index]);
-
-  // Display content
-  // display.setTextAlignment(TEXT_ALIGN_LEFT);
-  // switch(index){
-  //   case 1:
-  //     display.drawString(50,35,String(sensors.getTempCByIndex(0)));
-  //     break;
-  //   case 2:
-  //     display.drawString(50,35,String(settings[0]));
-  //     break;
-  //   case 3: // TODO: Timer
-  //     break;   
-  // }
 
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_16);
