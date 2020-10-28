@@ -1,10 +1,10 @@
 
 // Number of Settings
 const byte numOfSettings = 4;
-const char* namesSettings[] = {"Home", "Desired Temperature", "K_P", "K_I", "K_D", "Reset"};
+const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Reset"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
-const char* namespowerStates[] = {"Current Temperature", "Desired Temperature", "Timer", "Standby"};
+const char* namespowerStates[] = {"Temp", "Temp Des", "Timer", "Standby"};
 //                       {T_soll, K_p, K_i, K_d}
 int standardSettings[] = {   90,  50,  10,   5}; // TODO: EEPROM statt Definition
 int settings[4];

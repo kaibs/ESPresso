@@ -79,7 +79,9 @@ void displaySettings(int index) {
   }
   
   // display.drawXbm(xVecSymbStatus[numOfSettings + 2], 54, 10, 10, espresso_10);
-  display.drawString(0, 20, namesSettings[index]);
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.drawString(128, 0, namesSettings[index]);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
     if(index == 3){ // K_i
@@ -127,7 +129,7 @@ void displayMainMenu(byte index) {
 ///////////////////////////////displaypowerState///////////////////////////////////
 void displaypowerStates(byte index) {
   display.clear();
-  display.drawXbm(59, 0, 10, 10, espresso_10);
+  display.drawXbm(59, 2, 10, 10, espresso_10);
   displayTemperature();
   // display.drawString(0, 0, "Power ON");
   // Left Side: - middle: circle, right side: stop
@@ -144,7 +146,9 @@ void displaypowerStates(byte index) {
   } else{
       display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10, 10, home_10);
   }
-  display.drawString(0, 20, namespowerStates[index]);
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.drawString(128, 0, namespowerStates[index]);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
   switch(index){
     case 0:
       display.drawString(50,35,String(sensors.getTempCByIndex(0)));
@@ -223,10 +227,10 @@ void setup() {
   display.flipScreenVertically();
   // Calculate position of symbols in status bar in settings menu
   // display is 128x64, we need #(4 + backbutton + reset + playbutton) positions
-  byte maxAbstand = (128 - (numOfSettings + 3) * 10) / (numOfSettings + 2);
-  lengthSymbStatus = (10 + maxAbstand) * (numOfSettings + 3) - maxAbstand;
+  byte maxAbstand = (128 - (numOfSettings + 2) * 10) / (numOfSettings + 1);
+  lengthSymbStatus = (10 + maxAbstand) * (numOfSettings + 2) - maxAbstand;
   xVecSymbStatus[0] = 64 - round(lengthSymbStatus / 2);
-  for (int i = 1; i < numOfSettings+3; i++) {
+  for (int i = 1; i < numOfSettings+2; i++) {
     xVecSymbStatus[i] = xVecSymbStatus[i - 1] + 10 + maxAbstand;
   }
   // Same for powerState symbols
@@ -321,7 +325,7 @@ void loop() {
       if (menuCounter > 0) {
         menuCounter--;
       } else if (menuCounter < numOfSettings) {
-        menuCounter = numOfSettings;
+        menuCounter = numOfSettings + 1;
       }
       anticlockwise = false;
     }
