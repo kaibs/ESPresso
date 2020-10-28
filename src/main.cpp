@@ -44,7 +44,11 @@ void displaySettings(int index) {
   // Settingsbutton oben mitte
   display.drawXbm(56, 0, 14, 14, settingsbutton_14);
   // Left Side: back button, middle: circle, right side: play
-  display.drawXbm(xVecSymbStatus[0], 54, 10, 10, back_10);
+  if (index == 0){
+      display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10_filled);
+  } else{
+      display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10);
+  }
   for (int i = 1; i < numOfSettings + 2; i++) { /////////////////////////////////
     //display.drawXBitmap(xVecSymbStatus[i], 54, 10, 10, round_10);
     byte x = xVecSymbStatus[i];
@@ -83,14 +87,26 @@ void displayMainMenu(byte index) {
   //     display.drawString(0, 0, "Standby");
   //     break;
   // }
-  display.drawXbm(59, 0, 10, 10, home_10x10_bits);
+  display.drawXbm(59, 0, 10, 10, home_10);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  String current_Temp_string = String((int)sensors.getTempCByIndex(0));
+  int currentTemp = (int)sensors.getTempCByIndex(0);
+  String current_Temp_string;
+  if (currentTemp < 0){
+    current_Temp_string = "ERR";
+  } else if (currentTemp < 100){
+    current_Temp_string = "  " + String(currentTemp);
+  } else{
+    current_Temp_string = String(currentTemp);
+  }
+
   // if(current_Temp_string == "-127") {
-  //   current_Temp_string = 'ERR';
+  //   current_Temp_string = "ERR";
   // }
-  display.drawString(2, 0, current_Temp_string + ' C');
-  display.drawCircle(20,2,1);
+
+  display.drawString(2, 0, String(current_Temp_string ));
+  display.drawCircle(25,2,1);
+  display.drawString(28,0, "C");
+  
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
@@ -117,7 +133,11 @@ void displaypowerStates(byte index) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
-  display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, home_10x10_bits);
+  if (index == numOfpowerStates){
+      display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10, 10, home_10_filled);
+  } else{
+      display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10, 10, home_10);
+  }
   display.drawString(0, 20, namespowerStates[index]);
   switch(index){
     case 0:
