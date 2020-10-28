@@ -83,9 +83,14 @@ void displayMainMenu(byte index) {
   //     display.drawString(0, 0, "Standby");
   //     break;
   // }
-  display.drawXbm(59, 0, 10, 10, home_10);
+  display.drawXbm(59, 0, 10, 10, home_10x10_bits);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(2, 0, String((int)sensors.getTempCByIndex(0))+'C' + char(°));
+  String current_Temp_string = String((int)sensors.getTempCByIndex(0));
+  // if(current_Temp_string == "-127") {
+  //   current_Temp_string = 'ERR';
+  // }
+  display.drawString(2, 0, current_Temp_string + ' C');
+  display.drawCircle(20,2,1);
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
@@ -112,7 +117,7 @@ void displaypowerStates(byte index) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
-  display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, home_10);
+  display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, home_10x10_bits);
   display.drawString(0, 20, namespowerStates[index]);
   switch(index){
     case 0:
