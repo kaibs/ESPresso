@@ -72,14 +72,19 @@ void displaySettings(int index) {
   } else{
       display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10);
   }
-  for (int i = 1; i < numOfSettings + 2; i++) { /////////////////////////////////
+  for (int i = 1; i < numOfSettings + 1; i++) { /////////////////////////////////
     //display.drawXBitmap(xVecSymbStatus[i], 54, 10, 10, round_10);
     byte x = xVecSymbStatus[i];
-    if (i == index && i < numOfSettings + 2) {
+    if (i == index && i < numOfSettings + 1) {
       display.drawXbm(x, 54, 10, 10, roundfilled_10);
-    } else if (i > 0 && i < numOfSettings + 2) {
+    } else if (i > 0 && i < numOfSettings + 1) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
+  }
+  if (index == numOfSettings+1){
+      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
+  } else{
+      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
   }
   
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
@@ -188,10 +193,13 @@ void displaypowerStates(byte index) {
         // display.drawString(64, 25, String((double)settings[2]/100, 2));
       }
     }else if(index == 1){ // Current Temperature
-      display.drawCircle(76, 25, 2);
+      display.drawCircle(78, 25, 2);
       display.drawString(84, 25, "C");
-      // display.drawString(58, 25, String((double)sensors.getTempCByIndex(0),1));
-      display.drawString(55, 25, String((double)127.5,1));
+      if ((double)sensors.getTempCByIndex(0)==-127){
+        display.drawString(58, 25, "ERR");
+      }else{
+        display.drawString(58, 25, String((double)sensors.getTempCByIndex(0),1));
+      }
     }else if(index == 2){ // Desired Temperature
       display.drawCircle(73, 25, 2);
       display.drawString(79, 25, "C");
