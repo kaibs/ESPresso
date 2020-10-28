@@ -9,7 +9,12 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+// Libararies for WiFI
+#include <WiFi.h>
+
 #include <EEPROM.h>
+
+#include "credentials.h"
 
 // initialize display 1,3" OLED 
 SH1106Wire  display(0x3c, 21,22);
@@ -36,6 +41,42 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 // FUNKTIONEN   FUNKTIONEN   FUNKTIONEN   FUNKTIONEN   FUNKTIONEN
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
+
+// Connect to WIFI
+void setup_wifi() {
+  // delay(10);
+  display.setFont(ArialMT_Plain_10);
+  Serial.begin(115200);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  byte progress = 0; //
+  while (WiFi.status() != WL_CONNECTED) {
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.drawString(64, 5, "Connecting to WiFi");
+
+      display.drawProgressBar(34, 20, 60, 10, progress*5);
+      
+      display.display();
+
+      progress = progress + 1;
+      if (progress > 19){
+        // Connection failed, continue in Offline Mode
+        display.drawString(64,45, "Connection failed");
+        display.display();
+        delay(1000);
+        break;
+      }else{
+        delay(500);
+      }
+  }
+  if (WiFi.status() == WL_CONNECTED){
+      display.drawString(64,45, "Connected!");
+      display.display();
+      delay(1000);
+  }
+}
+
+
 
 void resetPID(){
   windowStartTime = millis();
@@ -135,13 +176,6 @@ void displayMainMenu(byte index) {
   display.clear();
   display.drawXbm(59, 0, 10, 10, home_10);
   displayTemperature();
-  // switch (index) {
-  //   case 1:
-  //     //display.drawXBitmap(10,0,homebutton_10, 10,10, WHITE);
-  //     display.drawString(0, 0, "Standby");
-  //     break;
-  // }
-
   
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
@@ -198,15 +232,7 @@ void displaypowerStates(byte index) {
   display.setFont(ArialMT_Plain_16);
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
-    if(index == 3){ // K_i
-      if(settings[2] == 100){
-        //  display.drawString(64, 25, "1.0");
-      }else{ 
-        // String(double(settings[2]/100), 2)
-        // display.drawString(50, 35, "0."+ String(settings[2]));
-        // display.drawString(64, 25, String((double)settings[2]/100, 2));
-      }
-    }else if(index == 1){ // Current Temperature
+    if(index == 1){ // Current Temperature
       display.drawCircle(78, 25, 2);
       display.drawString(84, 25, "C");
       if ((double)sensors.getTempCByIndex(0)==-127){
@@ -327,6 +353,8 @@ void setup() {
   settings[4] = EEPROM.read(4);
 
   resetPID();
+
+  setup_wifi();
 }
 
 //////////////////////////////////////////////////////////////////////

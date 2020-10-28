@@ -55,3 +55,5 @@ unsigned long windowStartTime;
 // Variables for EEPROM
 #define EEPROM_SIZE 5
 
+// MQTT Settings for use with Home Assistant
+
