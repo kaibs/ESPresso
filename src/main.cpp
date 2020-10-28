@@ -37,9 +37,29 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
+/////////////////////////////// displayTemperature////////////////////////////////
+void displayTemperature(){
+  display.drawXbm(59, 0, 10, 10, home_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  int currentTemp = (int)sensors.getTempCByIndex(0);
+  String current_Temp_string;
+  if (currentTemp < 0){
+    current_Temp_string = "ERR";
+  } else if (currentTemp < 100){
+    current_Temp_string = "  " + String(currentTemp);
+  } else{
+    current_Temp_string = String(currentTemp);
+  }
+
+  display.drawString(2, 0, String(current_Temp_string));
+  display.drawCircle(25,2,1);
+  display.drawString(28,0, "C");
+}
+
 ///////////////////////////////displaySettings////////////////////////////////////
 void displaySettings(int index) {
   display.clear();
+  displayTemperature();
   display.flipScreenVertically();
   // Settingsbutton oben mitte
   display.drawXbm(56, 0, 14, 14, settingsbutton_14);
@@ -81,31 +101,14 @@ void displayMainMenu(byte index) {
   // index == 1 -> mainMenu // Standby
   // index == 2 -> pauseMenu !! nicht mehr existent !!
   display.clear();
+  displayTemperature();
   // switch (index) {
   //   case 1:
   //     //display.drawXBitmap(10,0,homebutton_10, 10,10, WHITE);
   //     display.drawString(0, 0, "Standby");
   //     break;
   // }
-  display.drawXbm(59, 0, 10, 10, home_10);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  int currentTemp = (int)sensors.getTempCByIndex(0);
-  String current_Temp_string;
-  if (currentTemp < 0){
-    current_Temp_string = "ERR";
-  } else if (currentTemp < 100){
-    current_Temp_string = "  " + String(currentTemp);
-  } else{
-    current_Temp_string = String(currentTemp);
-  }
 
-  // if(current_Temp_string == "-127") {
-  //   current_Temp_string = "ERR";
-  // }
-
-  display.drawString(2, 0, String(current_Temp_string ));
-  display.drawCircle(25,2,1);
-  display.drawString(28,0, "C");
   
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
@@ -123,7 +126,8 @@ void displayMainMenu(byte index) {
 ///////////////////////////////displaypowerState///////////////////////////////////
 void displaypowerStates(byte index) {
   display.clear();
-  display.drawString(0, 0, "Power ON");
+  displayTemperature();
+  // display.drawString(0, 0, "Power ON");
   // Left Side: - middle: circle, right side: stop
   for (int i = 0; i < numOfpowerStates + 1; i++) { 
     byte x = xVecDripSymbStatus[i];
