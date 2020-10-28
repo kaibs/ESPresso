@@ -77,12 +77,15 @@ void displayMainMenu(byte index) {
   // index == 1 -> mainMenu // Standby
   // index == 2 -> pauseMenu !! nicht mehr existent !!
   display.clear();
-  switch (index) {
-    case 1:
-      //display.drawXBitmap(10,0,homebutton_10, 10,10, WHITE);
-      display.drawString(0, 0, "Standby");
-      break;
-  }
+  // switch (index) {
+  //   case 1:
+  //     //display.drawXBitmap(10,0,homebutton_10, 10,10, WHITE);
+  //     display.drawString(0, 0, "Standby");
+  //     break;
+  // }
+  display.drawXbm(59, 0, 10, 10, home_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(2, 0, String((int)sensors.getTempCByIndex(0))+'C' + char(°));
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
