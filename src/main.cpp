@@ -39,7 +39,10 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 /////////////////////////////// displayTemperature////////////////////////////////
 void displayTemperature(){
+  sensors.requestTemperatures();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+
   int currentTemp = (int)sensors.getTempCByIndex(0);
   String current_Temp_string;
   if (currentTemp < 0){
@@ -49,6 +52,7 @@ void displayTemperature(){
   } else{
     current_Temp_string = String(currentTemp);
   }
+    display.setFont(ArialMT_Plain_10);
 
   display.drawString(2, 0, String(current_Temp_string));
   display.drawCircle(25,2,1);
@@ -79,26 +83,28 @@ void displaySettings(int index) {
   }
   
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.setFont(ArialMT_Plain_10);
   display.drawString(128, 0, namesSettings[index]);
   // display.setTextAlignment(TEXT_ALIGN_LEFT);
 
   display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.setFont(ArialMT_Plain_10);
+  display.setFont(ArialMT_Plain_16);
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
     if(index == 3){ // K_i
       if(settings[2] == 100){
-         display.drawString(50, 35, "1.0");
+         display.drawString(64, 25, "1.0");
       }else{ 
         // String(double(settings[2]/100), 2)
         // display.drawString(50, 35, "0."+ String(settings[2]));
-        display.drawString(50, 35, String((double)settings[2]/100, 2));
+        display.drawString(64, 25, String((double)settings[2]/100, 2));
       }
     }else if(index == 1){ // Desired Temperature
-      display.drawCircle(20, 20, 2);
-      display.drawString(23, 20, "C");
+      display.drawCircle(73, 25, 2);
+      display.drawString(79, 25, "C");
+      display.drawString(58, 25, String(settings[index - 1]));
     }else{
-      display.drawString(50, 35, String(settings[index - 1]));
+      display.drawString(64, 25, String(settings[index - 1]));
     }  
   }
   display.display();
@@ -135,35 +141,66 @@ void displayMainMenu(byte index) {
 void displaypowerStates(byte index) {
   display.clear();
   display.drawXbm(59, 2, 10, 10, espresso_10);
-  displayTemperature();
-  // display.drawString(0, 0, "Power ON");
+  displayTemperature(); // display Temperature in upper left corner
+
   // Left Side: - middle: circle, right side: stop
-  for (int i = 0; i < numOfpowerStates + 1; i++) { 
+  for (int i = 1; i < numOfpowerStates + 2; i++) { 
     byte x = xVecDripSymbStatus[i];
-    if (i == index && i < numOfpowerStates) {
+    if (i == index && i < numOfpowerStates+1) {
       display.drawXbm(x, 54, 10,10,roundfilled_10);
-    } else if (i >= 0 && i < numOfpowerStates) {
+    } else if (i >= 0 && i < numOfpowerStates+1) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
-  if (index == numOfpowerStates){
-      display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10, 10, home_10_filled);
+  if (index == 0){
+      display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10_filled);
   } else{
-      display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10, 10, home_10);
+      display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10);
   }
+  // Display Name of menu in upper right corner
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.setFont(ArialMT_Plain_10);
   display.drawString(128, 0, namespowerStates[index]);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  switch(index){
-    case 0:
-      display.drawString(50,35,String(sensors.getTempCByIndex(0)));
-      break;
-    case 1:
-      display.drawString(50,35,String(settings[0]));
-      break;
-    case 2: // TODO: Parameter
-      break;   
+
+  // Display content
+  // display.setTextAlignment(TEXT_ALIGN_LEFT);
+  // switch(index){
+  //   case 1:
+  //     display.drawString(50,35,String(sensors.getTempCByIndex(0)));
+  //     break;
+  //   case 2:
+  //     display.drawString(50,35,String(settings[0]));
+  //     break;
+  //   case 3: // TODO: Timer
+  //     break;   
+  // }
+
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.setFont(ArialMT_Plain_16);
+  // Display Value of current setting
+  if (index <= numOfSettings && menuCounter > 0) {
+    if(index == 3){ // K_i
+      if(settings[2] == 100){
+        //  display.drawString(64, 25, "1.0");
+      }else{ 
+        // String(double(settings[2]/100), 2)
+        // display.drawString(50, 35, "0."+ String(settings[2]));
+        // display.drawString(64, 25, String((double)settings[2]/100, 2));
+      }
+    }else if(index == 1){ // Current Temperature
+      display.drawCircle(76, 25, 2);
+      display.drawString(84, 25, "C");
+      // display.drawString(58, 25, String((double)sensors.getTempCByIndex(0),1));
+      display.drawString(55, 25, String((double)127.5,1));
+    }else if(index == 2){ // Desired Temperature
+      display.drawCircle(73, 25, 2);
+      display.drawString(79, 25, "C");
+      display.drawString(58, 25, String(settings[index - 1]));
+    }else{
+      display.drawString(64, 25, String(settings[index - 1]));
+    }  
   }
+
   display.display();
 }
 
@@ -457,7 +494,7 @@ void loop() {
     Serial.println(output);
     if (clicked) {
       switch (menuCounter) {
-        case (numOfpowerStates): //Stop Drip button
+        case (0): //Stop Drip button
           mainMenu = true;
           digitalWrite(ssr, LOW);
           menuCounter = 0;
