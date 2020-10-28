@@ -6,7 +6,7 @@ const char* namesSettings[] = {"Return", "T_set", "K_p", "K_i", "K_d", "Reset" ,
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"T_current", "T_set", "Parameter", "Standby"};
 //                       {T_soll, K_p, K_i, K_d}
-int standardSettings[] = {   100,  50,  10,   5}; // TODO: EEPROM statt Definition
+int standardSettings[] = {   90,  50,  10,   5}; // TODO: EEPROM statt Definition
 int settings[4];
 int powerStates[numOfpowerStates];
 const int minSetting[] = {70, 0, 0, 0}; // "T_set", "K_p", "K_i", "K_d" 
@@ -30,11 +30,9 @@ byte menuCounter;
 boolean clicked = false; //true wenn encoder knopf einmal gedrückt wurde
 boolean mainMenu = true;
 boolean settingsMenu = false;
-boolean pauseDrip = false;
 boolean clockwise = false;
 boolean anticlockwise = false;
 boolean powerState = false;
-boolean preInfusion = false;
 
 byte xVecSymbStatus[numOfSettings + 3];
 byte lengthSymbStatus;

@@ -1,4 +1,4 @@
-// PID Library
+#include <Arduino.h>
 #include <PID_v1.h>
 
 // Libraries for Display
@@ -86,11 +86,11 @@ void displayMainMenu(byte index) {
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
-      display.drawXbm(12, 20, 40, 40,espresso40);
+      display.drawXbm(12, 20, 40, 40,espresso_cup40);
       display.drawXbm(81, 25, 30,30, settingsbutton30);
       break;
     case 2:
-      display.drawXbm(17, 25, 30, 30, playbutton30);
+      display.drawXbm(17, 25, 30, 30, espresso_cup30);
       display.drawXbm(76, 20, 40, 40, settingsbutton40);
       break;
   }
@@ -109,7 +109,7 @@ void displaypowerStates(byte index) {
       display.drawXbm(x, 54, 10, 10, round_10);
     }
   }
-  display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, stopbutton_10);
+  display.drawXbm(xVecDripSymbStatus[numOfpowerStates], 54, 10,10, home_10);
   display.drawString(0, 20, namespowerStates[index]);
   switch(index){
     case 0:
