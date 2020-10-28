@@ -61,8 +61,8 @@ void displaySettings(int index) {
   displayTemperature();
   display.flipScreenVertically();
   // Settingsbutton oben mitte
-  display.drawXbm(56, 0, 14, 14, settingsbutton_14);
-  // Left Side: back button, middle: circle, right side: play
+  display.drawXbm(59, 2, 10, 10, settingsbutton10);
+  // Left Side: home button, middle: circle indicators
   if (index == 0){
       display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10_filled);
   } else{
@@ -78,10 +78,12 @@ void displaySettings(int index) {
     }
   }
   
-  // display.drawXbm(xVecSymbStatus[numOfSettings + 2], 54, 10, 10, espresso_10);
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.drawString(128, 0, namesSettings[index]);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  // display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.setFont(ArialMT_Plain_10);
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
     if(index == 3){ // K_i
@@ -92,8 +94,11 @@ void displaySettings(int index) {
         // display.drawString(50, 35, "0."+ String(settings[2]));
         display.drawString(50, 35, String((double)settings[2]/100, 2));
       }
+    }else if(index == 1){ // Desired Temperature
+      display.drawCircle(20, 20, 2);
+      display.drawString(23, 20, "C");
     }else{
-    display.drawString(50, 35, String(settings[index - 1]));
+      display.drawString(50, 35, String(settings[index - 1]));
     }  
   }
   display.display();
