@@ -1,16 +1,19 @@
 
 // Number of Settings
-const byte numOfSettings = 4;
-const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Reset"};
+const byte numOfSettings = 5;
+const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Temp Offset", "Reset"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"Home", "Temp", "Temp Des", "Timer"};
-//                       {T_soll, K_p, K_i, K_d}
-int standardSettings[] = {   90,  50,  10,   5}; // TODO: EEPROM statt Definition
-int settings[4];
+// Main Menu States
+const byte numOfMainStates = 2;
+const char* namesMainStates[] = {"Coffee", "Settings"};
+//                       {T_soll, K_p, K_i, K_d, Temp Offset}
+int standardSettings[] = {   90,  50,  10,   5, 0}; // TODO: EEPROM statt Definition
+int settings[5];
 int powerStates[numOfpowerStates];
-const int minSetting[] = {70, 0, 0, 0}; // "T_set", "K_p", "K_i", "K_d" 
-const int maxSetting[] = {110, 100, 100, 100}; // "T_set", "K_p", "K_i", "K_d"
+const int minSetting[] = {70, 0, 0, 0, -10}; // "T_set", "K_p", "K_i", "K_d" 
+const int maxSetting[] = {110, 100, 100, 100, 10}; // "T_set", "K_p", "K_i", "K_d"
 
 // Setting which currently is edited, = 0 if no setting is manipulated
 byte editSetting = 0;
@@ -50,5 +53,5 @@ int WindowSize = 500;
 unsigned long windowStartTime;
 
 // Variables for EEPROM
-#define EEPROM_SIZE 4
+#define EEPROM_SIZE 5
 

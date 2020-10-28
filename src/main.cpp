@@ -37,6 +37,14 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
+void resetPID(){
+  windowStartTime = millis();
+  // Settings for PID
+  gaggiaPIT.SetOutputLimits(0, WindowSize);
+  gaggiaPIT.SetMode(AUTOMATIC);
+}
+
+
 /////////////////////////////// displayTemperature////////////////////////////////
 void displayTemperature(){
   sensors.requestTemperatures();
@@ -82,7 +90,7 @@ void displaySettings(int index) {
     }
   }
   if (index == numOfSettings+1){
-      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
+      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10_filled);
   } else{
       display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
   }
@@ -104,7 +112,7 @@ void displaySettings(int index) {
         // display.drawString(50, 35, "0."+ String(settings[2]));
         display.drawString(64, 25, String((double)settings[2]/100, 2));
       }
-    }else if(index == 1){ // Desired Temperature
+    }else if(index == 1 || index == 5){ // Desired Temperature
       display.drawCircle(73, 25, 2);
       display.drawString(79, 25, "C");
       display.drawString(58, 25, String(settings[index - 1]));
@@ -112,8 +120,11 @@ void displaySettings(int index) {
       display.drawString(64, 25, String(settings[index - 1]));
     }  
   }
-  if(index == 5){ // Reset
+  if(index == numOfSettings+1){ // Reset
       display.drawXbm(54, 23, 20, 20, trash_20);
+  }
+  if(index == 0){ // Reset
+      display.drawXbm(54, 23, 20, 20, home_20);
   }
   display.display();
 }
@@ -135,12 +146,18 @@ void displayMainMenu(byte index) {
   //display.drawLine(0,11,128,11,WHITE);
   switch (menuCounter) {
     case 1:
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
       display.drawXbm(12, 20, 40, 40,espresso_cup40);
       display.drawXbm(81, 25, 30,30, settingsbutton30);
+      display.setTextAlignment(TEXT_ALIGN_RIGHT);
+      display.drawString(128, 0, namesMainStates[0]);
       break;
     case 2:
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
       display.drawXbm(17, 25, 30, 30, espresso_cup30);
       display.drawXbm(76, 20, 40, 40, settingsbutton40);
+      display.setTextAlignment(TEXT_ALIGN_RIGHT);
+      display.drawString(128, 0, namesMainStates[1]);
       break;
   }
   display.display();
@@ -206,10 +223,13 @@ void displaypowerStates(byte index) {
     }else if(index == 2){ // Desired Temperature
       display.drawCircle(73, 25, 2);
       display.drawString(79, 25, "C");
-      display.drawString(58, 25, String(settings[index - 1]));
+      display.drawString(58, 25, String(settings[0]));
     }else{
       display.drawString(64, 25, String(settings[index - 1]));
     }  
+  }
+  if(index == 0){ // Reset
+      display.drawXbm(54, 23, 20, 20, home_20);
   }
 
   display.display();
@@ -225,8 +245,8 @@ void IRAM_ATTR isr_encoder () {
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTime = 0;
   // unsigned long interruptTime = millis();
-  // If interrupts come faster than 5ms, assume it's a bounce and ignore
-  if (millis() - lastInterruptTime > 50) {
+  // If interrupts come faster than 50ms, assume it's a bounce and ignore
+  if (millis() - lastInterruptTime > 100) {
     if (digitalRead(Pin_CLK) == HIGH)
     {
       clockwise = true;
@@ -310,11 +330,9 @@ void setup() {
   settings[1] = EEPROM.read(1);
   settings[2] = EEPROM.read(2);
   settings[3] = EEPROM.read(3);
- 
-  windowStartTime = millis();
-  // Settings for PID
-  gaggiaPIT.SetOutputLimits(0, WindowSize);
-  gaggiaPIT.SetMode(AUTOMATIC);
+  settings[4] = EEPROM.read(4);
+
+  resetPID();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -351,8 +369,8 @@ void loop() {
           powerState = true;
           gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
           //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-          setpoint = settings[0];
-          menuCounter = 0;         
+          setpoint = settings[0]+settings[4]; // Desired Temperature + Temperature Offset
+          menuCounter = 1;         
           break;
         case 2: // Settings
           settingsMenu = true;
@@ -448,10 +466,12 @@ void loop() {
           settings[1] = standardSettings[1];
           settings[2] = standardSettings[2];
           settings[3] = standardSettings[3];
+          settings[4] = standardSettings[4];
           EEPROM.write(0, settings[0]);
           EEPROM.write(1, settings[1]);
           EEPROM.write(2, settings[2]);
-          EEPROM.write(3, settings[3]);          
+          EEPROM.write(3, settings[3]);        
+          EEPROM.write(4, settings[4]);  
           EEPROM.commit();
           break;
       }
@@ -466,6 +486,7 @@ void loop() {
     }
  }
   //////////////////////////////////// powerState ///////////////////////////////////////////////
+  resetPID();
   while (powerState) {
     if (clockwise) {
       if (menuCounter < numOfpowerStates) {
@@ -505,7 +526,7 @@ void loop() {
     Serial.println(output);
     if (clicked) {
       switch (menuCounter) {
-        case (0): //Stop Drip button
+        case (0): // main menu button
           mainMenu = true;
           digitalWrite(ssr, LOW);
           menuCounter = 0;
