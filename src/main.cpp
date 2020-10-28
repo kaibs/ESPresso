@@ -51,7 +51,7 @@ void displayTemperature(){
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
 
-  int currentTemp = (int)sensors.getTempCByIndex(0);
+  int currentTemp = (int)sensors.getTempCByIndex(0)+settings[4];
   String current_Temp_string;
   if (currentTemp < 0){
     current_Temp_string = "ERR";
@@ -185,7 +185,7 @@ void displaypowerStates(byte index) {
   }
   // Draw hourglass for timer function
   if (index == 3){
-      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10);
+      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10_filled);
   } else{
       display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10);
   }
@@ -212,7 +212,7 @@ void displaypowerStates(byte index) {
       if ((double)sensors.getTempCByIndex(0)==-127){
         display.drawString(58, 25, "ERR");
       }else{
-        display.drawString(58, 25, String((double)sensors.getTempCByIndex(0),1));
+        display.drawString(58, 25, String((double)sensors.getTempCByIndex(0)+settings[4],1));
       }
     }else if(index == 2){ // Desired Temperature
       display.drawCircle(73, 25, 2);
@@ -363,7 +363,7 @@ void loop() {
           powerState = true;
           gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
           //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-          setpoint = settings[0]+settings[4]; // Desired Temperature + Temperature Offset
+          setpoint = settings[0]; // Desired Temperature + Temperature Offset
           menuCounter = 1;         
           break;
         case 2: // Settings
@@ -411,15 +411,18 @@ void loop() {
         case 4: // K_d
           change = 1;
           break;
+        case 5: // Temperature Offset
+          change = 1;
+          break;
       }
-      if(editSetting < numOfSettings + 1){
+      if(editSetting < numOfSettings + 2){
         if (anticlockwise) {
-        if (settings[editSetting - 1] - change > minSetting[editSetting - 1]) {
-          settings[editSetting - 1] -= change;
-        } else {
-          settings[editSetting - 1] = minSetting[editSetting - 1];
-        }
-        anticlockwise = false;
+          if (settings[editSetting - 1] - change > minSetting[editSetting - 1]) {
+            settings[editSetting - 1] -= change;
+          } else {
+            settings[editSetting - 1] = minSetting[editSetting - 1];
+          }
+          anticlockwise = false;
         }
         if (clockwise) {
           if (settings[editSetting - 1] + change < maxSetting[editSetting - 1]) {
@@ -500,7 +503,7 @@ void loop() {
     }
     displaypowerStates(menuCounter);
     sensors.requestTemperatures();
-    input = sensors.getTempCByIndex(0);
+    input = sensors.getTempCByIndex(0)+settings[4]; // measured temperature + offset
     gaggiaPIT.Compute();
     unsigned long now = millis();
     if (now - windowStartTime > WindowSize)
