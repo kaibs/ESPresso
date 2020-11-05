@@ -9,12 +9,17 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// Libararies for WiFI
+// Libararies for WiFI and MQTT
 #include <WiFi.h>
+#include <PubSubClient.h>
 
 #include <EEPROM.h>
 
 #include "credentials.h"
+
+// Variables for MQTT Server
+WiFiClient ESPresso;
+PubSubClient client(ESPresso);
 
 // initialize display 1,3" OLED 
 SH1106Wire  display(0x3c, 21,22);
@@ -44,21 +49,20 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 // Connect to WIFI
 void setup_wifi() {
-  // delay(10);
+  display.clear();
   display.setFont(ArialMT_Plain_10);
-  Serial.begin(115200);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  byte progress = 0; //
+  byte progress = -1; //
   while (WiFi.status() != WL_CONNECTED) {
+      progress = progress + 1;
+      
       display.setTextAlignment(TEXT_ALIGN_CENTER);
       display.drawString(64, 5, "Connecting to WiFi");
-
       display.drawProgressBar(34, 20, 60, 10, progress*5);
       
       display.display();
 
-      progress = progress + 1;
       if (progress > 19){
         // Connection failed, continue in Offline Mode
         display.drawString(64,45, "Connection failed");
@@ -76,7 +80,42 @@ void setup_wifi() {
   }
 }
 
+// Connect to MQTT Server
+void setup_mqtt() {
+  display.clear();
+  display.setFont(ArialMT_Plain_10);
+  byte progress = -1; //
 
+  client.setClient(ESPresso);
+  client.setServer(MQTT_SERVER_IP, 1883);
+
+  while (!client.connected()) {
+    progress = progress + 1;
+    
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(64, 5, "Connecting to MQTT");
+    display.drawProgressBar(34, 20, 60, 10, progress*5);
+    
+    display.display();
+    // Try to connect to MQTT Server and retry if not succeeded
+    if (client.connect("ESPresso", MQTT_USER, MQTT_PASSWORD)) {
+      // Subscribe to specified topics for Gaggia
+      client.subscribe(MQTT_TOPIC_SWITCH);
+      display.drawString(64,45, "Connected!");
+      display.display();
+      delay(1000);
+    } 
+    if (progress > 19){
+      // Connection failed, continue in Offline Mode
+      display.drawString(64,45, "Connection failed");
+      display.display();
+      delay(1000);
+      break;
+    }else{
+      delay(500);
+    }
+  }
+}
 
 void resetPID(){
   windowStartTime = millis();
@@ -84,7 +123,6 @@ void resetPID(){
   gaggiaPIT.SetOutputLimits(0, WindowSize);
   gaggiaPIT.SetMode(AUTOMATIC);
 }
-
 
 /////////////////////////////// displayTemperature////////////////////////////////
 void displayTemperature(){
@@ -303,7 +341,6 @@ void setup() {
 
   EEPROM.begin(EEPROM_SIZE);
 
-  
   pinMode(Pin_DT, INPUT_PULLUP);
   pinMode(Pin_SW, INPUT_PULLUP);
   pinMode(ssr, OUTPUT);
@@ -354,7 +391,10 @@ void setup() {
 
   resetPID();
 
+  // Setup and connect to WiFi
   setup_wifi();
+  // Setup MQTT and subscribe to stated topics
+  setup_mqtt();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -540,15 +580,15 @@ void loop() {
     }
     if (output > now - windowStartTime){
       digitalWrite(ssr, HIGH);
-      Serial.println("HIGH");
+      // Serial.println("HIGH"); // Debugging 
     }
     else{    
       digitalWrite(ssr, LOW);
-      Serial.println("LOW");
+      // Serial.println("LOW"); // Debugging 
     }
-    Serial.print(input);
-    Serial.print(",");
-    Serial.println(output);
+    // Serial.print(input); // Debugging 
+    // Serial.print(","); // Debugging 
+    // Serial.println(output); // Debugging 
     if (clicked) {
       switch (menuCounter) {
         case (0): // main menu button
@@ -557,7 +597,8 @@ void loop() {
           menuCounter = 0;
           powerState = false;
           break;
-        case(2): // Parameter
+        case(2): // Timer
+          // TODO: implement timer functionality
           break;
       }
       clicked = false;
