@@ -1,7 +1,7 @@
 
 // Number of Settings
-const byte numOfSettings = 5;
-const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Temp Offset", "Reset"};
+const byte numOfSettings = 7;
+const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Temp Offset", "WiFi", "MQTT", "Reset"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"Home", "Temp", "Temp Des", "Timer"};

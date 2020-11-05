@@ -159,8 +159,7 @@ void displaySettings(int index) {
   } else{
       display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10);
   }
-  for (int i = 1; i < numOfSettings + 1; i++) { /////////////////////////////////
-    //display.drawXBitmap(xVecSymbStatus[i], 54, 10, 10, round_10);
+  for (int i = 1; i < numOfSettings + 1; i++) { 
     byte x = xVecSymbStatus[i];
     if (i == index && i < numOfSettings + 1) {
       display.drawXbm(x, 54, 10, 10, roundfilled_10);
@@ -174,16 +173,17 @@ void displaySettings(int index) {
       display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
   }
   
+  // Display name of setting in upper right corner
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.setFont(ArialMT_Plain_10);
   display.drawString(128, 0, namesSettings[index]);
-  // display.setTextAlignment(TEXT_ALIGN_LEFT);
 
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.setFont(ArialMT_Plain_16);
+  
   // Display Value of current setting
   if (index <= numOfSettings && menuCounter > 0) {
     if(index == 3){ // K_i
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);
       if(settings[2] == 100){
          display.drawString(64, 25, "1.0");
       }else{ 
@@ -191,20 +191,52 @@ void displaySettings(int index) {
         // display.drawString(50, 35, "0."+ String(settings[2]));
         display.drawString(64, 25, String((double)settings[2]/100, 2));
       }
-    }else if(index == 1 || index == 5){ // Desired Temperature
+    }else if(index == 1 || index == 5){ // Desired Temperature || Temp Offset
+      // Display °C after setting
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);  
       display.drawCircle(73, 25, 2);
       display.drawString(79, 25, "C");
       display.drawString(58, 25, String(settings[index - 1]));
-    }else{
+    }else if(index == 6){ // Display WiFi Settings
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      display.setFont(ArialMT_Plain_10);
+      if (WiFi.status() != WL_CONNECTED){
+        display.setTextAlignment(TEXT_ALIGN_CENTER);
+        display.drawString(64,20, "No WiFi Connection.");
+        display.drawString(64,35, "Press to retry.");
+      }else {
+        display.setTextAlignment(TEXT_ALIGN_CENTER);
+        display.drawString(64,20, "IP: "+ WiFi.localIP().toString());
+      }
+
+    }else if(index == 7){// Display MQTT Settings
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      display.setFont(ArialMT_Plain_10);
+      if (client.state() != 0){
+        display.setTextAlignment(TEXT_ALIGN_CENTER);
+        display.drawString(64,18, "No MQTT Connection.");
+        display.drawString(64,29, "State: " + String(client.state()));
+        display.drawString(64,40, "Press to retry.");
+      }else {
+        display.setTextAlignment(TEXT_ALIGN_CENTER);
+        display.drawString(64,20, "Connected!");
+      }
+
+    }else{ // Just display regular setting
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);
       display.drawString(64, 25, String(settings[index - 1]));
     }  
   }
   if(index == numOfSettings+1){ // Reset
       display.drawXbm(54, 23, 20, 20, trash_20);
   }
-  if(index == 0){ // Reset
+  if(index == 0){ // Home Menu
       display.drawXbm(54, 23, 20, 20, home_20);
   }
+
+
   display.display();
 }
 ///////////////////////////////displayMainMenu///////////////////////////////////
@@ -371,7 +403,7 @@ void setup() {
   for (int i = 1; i < numOfpowerStates + 1; i++) {
     xVecDripSymbStatus[i] = xVecDripSymbStatus[i - 1] + 10 + maxAbstand;
   }
-  for (int i = 0; i < numOfSettings-1; i++) {
+  for (int i = 0; i < EEPROM_SIZE; i++) {
     //EEPROM.get(i + 1, settings[i]);
     // Incase value of setting is already to high/low set to max/min value
     if (settings[i] > maxSetting[i]) {
@@ -519,13 +551,8 @@ void loop() {
           mainMenu = true;
           settingsMenu = false;
           break;
-        // case (numOfSettings+2): // user choose power on
-        //   settingsMenu = false;
-        //   powerState = true;
-        //   gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
-        //   setpoint = settings[0];
-        //   menuCounter = 0;
-        //   break;
+
+        // Reset EEPROM Parameters to Standard Setttings
         case (numOfSettings+1):
           settings[0] = standardSettings[0];
           settings[1] = standardSettings[1];
@@ -539,12 +566,21 @@ void loop() {
           EEPROM.write(4, settings[4]);  
           EEPROM.commit();
           break;
+        // Reconnect to WiFi
+        case 6:
+          setup_wifi();
+          break;
+        // Reconnect to MQTT
+        case 7:
+          setup_mqtt();
+          break;
       }
-      if (menuCounter <= numOfSettings && menuCounter > 0) {
+      // Only try to edit setting, when there is a editable one (all except home, wifi, mqtt, reset)
+      if (menuCounter <= numOfSettings - 2 && menuCounter > 0) {
         if (editSetting != 0) {
           editSetting = 0;
         } else {
-          editSetting = menuCounter; // editSetting between 1 and 4
+          editSetting = menuCounter; // editSetting between 1 and numOfSettings-1
         }
       }
       clicked = false;
