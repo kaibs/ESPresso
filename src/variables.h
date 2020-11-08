@@ -55,5 +55,10 @@ unsigned long windowStartTime;
 // Variables for EEPROM
 #define EEPROM_SIZE 5
 
-// MQTT Settings for use with Home Assistant
+String receivedString;
+unsigned long mqttTimer;
+
+//mqtt messages
+#define MSG_BUFFER_SIZE	(50)
+char msg_temp[MSG_BUFFER_SIZE];
 

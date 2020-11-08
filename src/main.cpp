@@ -47,10 +47,85 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
+void state_transition(char* new_state){
+  /*
+  Possible States:
+  - mainMenu
+  - settingsMenu
+  - powerState
+  */
+  digitalWrite(ssr, LOW);
+  mainMenu=false;
+  settingsMenu=false;
+  powerState=false;
+  if (strcmp(new_state,"mainMenu")==0){
+    menuCounter = 0;
+    mainMenu=true;  
+  }
+  if (strcmp(new_state,"settingsMenu")==0){
+    menuCounter = 1;
+    settingsMenu=true;
+    editSetting = 0;
+  }
+  if (strcmp(new_state,"powerState")==0){
+    menuCounter = 1;
+    powerState=true;
+    gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
+    //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
+    setpoint = settings[0]; // Desired Temperature
+  }
+}
+
+void publish_temp(){
+    char helpval[8];
+    dtostrf(sensors.getTempCByIndex(0)+settings[4], 6, 2, helpval);
+    snprintf (msg_temp, MSG_BUFFER_SIZE, helpval);
+    client.publish(MQTT_TOPIC_TEMP, msg_temp);
+    //Serial.println("Published");
+}
+
+/////////////////////////////// Handle mqtt stuff //////////////////////////////////
+void mqtt_stuff(){
+  
+  // Publish current temperature every 20 seconds if in mainMenu oder settingsMenu, every second when in powerState
+  unsigned long currentTimeDiff = millis()-mqttTimer;
+  if (settingsMenu == true || mainMenu == true){
+    if (currentTimeDiff > 20000){
+      publish_temp();
+      mqttTimer = millis();
+    }
+  }else if (powerState == true){
+    if (currentTimeDiff > 1000){
+      publish_temp();
+      mqttTimer = millis();
+    }
+  }
+  // Loop the mqtt client
+  client.loop();
+}
+
+
+/////////////////////////////// callback for mqtt /////////////////////////////////
+void mqtt_callback(char* topic, byte* payload, unsigned int length){
+  if (strcmp(topic,MQTT_TOPIC_SWITCH)==0){
+    receivedString = "";
+    for (int i=0;i<length;i++) {
+      receivedString += (char)payload[i];
+    }
+    if (receivedString == "ON"){
+        state_transition("powerState");
+    }
+    if (receivedString == "OFF"){
+      state_transition("mainMenu");
+    }
+  }
+}
+
 // Connect to WIFI
-void setup_wifi() {
+void setup_wifi(){
   display.clear();
   display.setFont(ArialMT_Plain_10);
+  WiFi.setHostname("ESPresso");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   byte progress = -1; //
@@ -88,6 +163,7 @@ void setup_mqtt() {
 
   client.setClient(ESPresso);
   client.setServer(MQTT_SERVER_IP, 1883);
+  client.setCallback(mqtt_callback);
 
   while (!client.connected()) {
     progress = progress + 1;
@@ -116,6 +192,8 @@ void setup_mqtt() {
     }
   }
 }
+
+
 
 void resetPID(){
   windowStartTime = millis();
@@ -413,6 +491,9 @@ void setup() {
       settings[i] = minSetting[i];
     }
   }
+
+  // Setup mqtt Timer variable with current Time
+  mqttTimer = millis();
   
   // Get the last values for the settings from EEPROM
   settings[0] = EEPROM.read(0);
@@ -460,21 +541,17 @@ void loop() {
     if (clicked) {
       switch (menuCounter) {
         case 1: // Power On
-          powerState = true;
-          gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
-          //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-          setpoint = settings[0]; // Desired Temperature + Temperature Offset
-          menuCounter = 1;         
+          state_transition("powerState");        
           break;
         case 2: // Settings
-          settingsMenu = true;
-          menuCounter = 1;
-          editSetting = 0;
+          state_transition("settingsMenu");
           break;
       }
       mainMenu = false;
       clicked = false;      
     }
+    // Call MQTT handler
+    mqtt_stuff();
   }
   /////////////////////////// SETTINGS MENU /////////////////////////////
   while (settingsMenu) {
@@ -542,16 +619,13 @@ void loop() {
         menuCounter = editSetting;
         editSetting = 0;
         clicked = false;
+      }
     }
-  }
     if (clicked) {
       switch (menuCounter) {
         case 0: // User choose return
-          menuCounter = 1;
-          mainMenu = true;
-          settingsMenu = false;
+          state_transition("mainMenu");
           break;
-
         // Reset EEPROM Parameters to Standard Setttings
         case (numOfSettings+1):
           settings[0] = standardSettings[0];
@@ -585,7 +659,9 @@ void loop() {
       }
       clicked = false;
     }
- }
+    // Call MQTT handler
+    mqtt_stuff();
+  }
   //////////////////////////////////// powerState ///////////////////////////////////////////////
   resetPID();
   while (powerState) {
@@ -628,10 +704,7 @@ void loop() {
     if (clicked) {
       switch (menuCounter) {
         case (0): // main menu button
-          mainMenu = true;
-          digitalWrite(ssr, LOW);
-          menuCounter = 0;
-          powerState = false;
+          state_transition("mainMenu");
           break;
         case(2): // Timer
           // TODO: implement timer functionality
@@ -639,5 +712,7 @@ void loop() {
       }
       clicked = false;
     }
+    // Call MQTT handler
+    mqtt_stuff();
   }
 }
