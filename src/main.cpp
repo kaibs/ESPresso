@@ -17,6 +17,20 @@
 
 #include "credentials.h"
 
+// Used e.g. for the timers
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "driver/periph_ctrl.h"
+#include "driver/timer.h"
+
+#define TIMER_DIVIDER         16  //  Hardware timer clock divider
+#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
+#define TIMER_INTERVAL0_SEC   (3.4179) // sample test interval for the first timer
+#define TIMER_INTERVAL1_SEC   (5.78)   // sample test interval for the second timer
+#define TEST_WITHOUT_RELOAD   0        // testing will be done without auto reload
+#define TEST_WITH_RELOAD      1        // testing will be done with auto reload
+
 // Variables for MQTT Server
 WiFiClient ESPresso;
 PubSubClient client(ESPresso);
@@ -78,32 +92,11 @@ void state_transition(char* new_state){
 
 void publish_temp(){
     char helpval[8];
-    dtostrf(sensors.getTempCByIndex(0)+settings[4], 6, 2, helpval);
+    dtostrf(currentTemperature, 6, 2, helpval);
     snprintf (msg_temp, MSG_BUFFER_SIZE, helpval);
     client.publish(MQTT_TOPIC_TEMP, msg_temp);
     //Serial.println("Published");
 }
-
-/////////////////////////////// Handle mqtt stuff //////////////////////////////////
-void mqtt_stuff(){
-  
-  // Publish current temperature every 20 seconds if in mainMenu oder settingsMenu, every second when in powerState
-  unsigned long currentTimeDiff = millis()-mqttTimer;
-  if (settingsMenu == true || mainMenu == true){
-    if (currentTimeDiff > 20000){
-      publish_temp();
-      mqttTimer = millis();
-    }
-  }else if (powerState == true){
-    if (currentTimeDiff > 1000){
-      publish_temp();
-      mqttTimer = millis();
-    }
-  }
-  // Loop the mqtt client
-  client.loop();
-}
-
 
 /////////////////////////////// callback for mqtt /////////////////////////////////
 void mqtt_callback(char* topic, byte* payload, unsigned int length){
@@ -180,6 +173,7 @@ void setup_mqtt() {
       display.drawString(64,45, "Connected!");
       display.display();
       delay(1000);
+      
     } 
     if (progress > 19){
       // Connection failed, continue in Offline Mode
@@ -191,8 +185,44 @@ void setup_mqtt() {
       delay(500);
     }
   }
+  if (client.connected()){
+    online_mode = true;
+  }
+
 }
 
+/////////////////////////////// Handle mqtt stuff //////////////////////////////////
+void mqtt_stuff(){
+  // Check, whether still connected to MQTT-Server, if not: reconnect
+  if(!client.connected()){
+    if(!WiFi.isConnected()){
+      setup_wifi();
+    }else{
+      setup_mqtt();
+    }
+  }
+  // Publish current temperature every 20 seconds if in mainMenu oder settingsMenu, every second when in powerState
+  unsigned long currentTimeDiff = millis()-mqttPubTimer;
+  unsigned long currentSubDiff = millis()-mqttPubTimer;
+  if (settingsMenu == true || mainMenu == true){
+    if (currentTimeDiff > 20000){
+      publish_temp();
+      mqttPubTimer = millis();
+    }
+  }else if (powerState == true){
+    if (currentTimeDiff > 1000){
+      publish_temp();
+      mqttPubTimer = millis();
+    }
+  }else if (settingsMenu == true || mainMenu == true){
+    if (currentSubDiff > 1000){
+    }
+  }
+  // Loop the mqtt client
+  client.loop();
+  //delay(100);
+
+}
 
 
 void resetPID(){
@@ -208,14 +238,15 @@ void displayTemperature(){
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
 
-  int currentTemp = (int)sensors.getTempCByIndex(0)+settings[4];
+  currentTemperature = sensors.getTempCByIndex(0)+settings[4];
+  int currentTempInt = (int)currentTemperature;
   String current_Temp_string;
-  if (currentTemp < 0){
+  if (currentTempInt < 0){
     current_Temp_string = "ERR";
-  } else if (currentTemp < 100){
-    current_Temp_string = "  " + String(currentTemp);
+  } else if (currentTempInt < 100){
+    current_Temp_string = "  " + String(currentTempInt);
   } else{
-    current_Temp_string = String(currentTemp);
+    current_Temp_string = String(currentTempInt);
   }
     display.setFont(ArialMT_Plain_10);
 
@@ -314,7 +345,6 @@ void displaySettings(int index) {
       display.drawXbm(54, 23, 20, 20, home_20);
   }
 
-
   display.display();
 }
 ///////////////////////////////displayMainMenu///////////////////////////////////
@@ -383,10 +413,10 @@ void displaypowerStates(byte index) {
     if(index == 1){ // Current Temperature
       display.drawCircle(78, 25, 2);
       display.drawString(84, 25, "C");
-      if ((double)sensors.getTempCByIndex(0)==-127){
+      if (currentTemperature<0){
         display.drawString(58, 25, "ERR");
       }else{
-        display.drawString(58, 25, String((double)sensors.getTempCByIndex(0)+settings[4],1));
+        display.drawString(58, 25, String(currentTemperature,1));
       }
     }else if(index == 2){ // Desired Temperature
       display.drawCircle(73, 25, 2);
@@ -414,7 +444,7 @@ void IRAM_ATTR isr_encoder () {
   static unsigned long lastInterruptTime = 0;
   // unsigned long interruptTime = millis();
   // If interrupts come faster than 50ms, assume it's a bounce and ignore
-  if (millis() - lastInterruptTime > 100) {
+  if (millis() - lastInterruptTime > 100) { //100
     if (digitalRead(Pin_CLK) == HIGH)
     {
       clockwise = true;
@@ -493,7 +523,7 @@ void setup() {
   }
 
   // Setup mqtt Timer variable with current Time
-  mqttTimer = millis();
+  mqttPubTimer = millis();
   
   // Get the last values for the settings from EEPROM
   settings[0] = EEPROM.read(0);
@@ -504,10 +534,36 @@ void setup() {
 
   resetPID();
 
-  // Setup and connect to WiFi
-  setup_wifi();
-  // Setup MQTT and subscribe to stated topics
-  setup_mqtt();
+  // WiFI and MQTT are each given 5 tries. If there is no connection, disable online_mode
+  for (int i = 0; i < 5; i++){
+    // Setup and connect to WiFi
+    setup_wifi();
+    if(WiFi.isConnected()){
+      break;
+    }
+  }
+  if(WiFi.isConnected()){
+    for (int i = 0; i < 5; i++){
+      // Setup MQTT and subscribe to stated topics
+      setup_mqtt();
+      if(client.connected()){
+        break;
+      }
+    }
+  }
+  if (WiFi.isConnected() and client.connected()){
+    online_mode = true;
+  }else{
+    online_mode = false;
+  }
+
+  // Initialize 2 of the 4 available Timers
+  
+  // I: Espressoshot-Timer
+
+
+  // II: Auto-PowerOff Timer
+  
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -550,8 +606,11 @@ void loop() {
       mainMenu = false;
       clicked = false;      
     }
-    // Call MQTT handler
-    mqtt_stuff();
+    if(online_mode){
+      // Call MQTT handler
+      mqtt_stuff();
+    }
+    
   }
   /////////////////////////// SETTINGS MENU /////////////////////////////
   while (settingsMenu) {
@@ -659,8 +718,10 @@ void loop() {
       }
       clicked = false;
     }
-    // Call MQTT handler
-    mqtt_stuff();
+    if(online_mode){
+      // Call MQTT handler
+      mqtt_stuff();
+    }
   }
   //////////////////////////////////// powerState ///////////////////////////////////////////////
   resetPID();
@@ -712,7 +773,9 @@ void loop() {
       }
       clicked = false;
     }
-    // Call MQTT handler
-    mqtt_stuff();
+    if(online_mode){
+      // Call MQTT handler
+      mqtt_stuff();
+    }
   }
 }

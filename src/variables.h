@@ -49,6 +49,8 @@ double setpoint = 100;
 double input;
 double output;
 
+double currentTemperature;
+
 int WindowSize = 500;
 unsigned long windowStartTime;
 
@@ -56,7 +58,10 @@ unsigned long windowStartTime;
 #define EEPROM_SIZE 5
 
 String receivedString;
-unsigned long mqttTimer;
+unsigned long mqttPubTimer;
+
+// WiFI and MQTT variables
+boolean online_mode;
 
 //mqtt messages
 #define MSG_BUFFER_SIZE	(50)
