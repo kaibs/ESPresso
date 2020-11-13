@@ -67,3 +67,6 @@ boolean online_mode;
 #define MSG_BUFFER_SIZE	(50)
 char msg_temp[MSG_BUFFER_SIZE];
 
+// Variable for the HW-Timers
+double current_shot_timer;
+boolean shot_timer_active = false;

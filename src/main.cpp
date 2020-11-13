@@ -18,6 +18,8 @@
 #include "credentials.h"
 
 // Used e.g. for the timers
+#include <stdio.h>
+#include "esp_types.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -26,8 +28,6 @@
 
 #define TIMER_DIVIDER         16  //  Hardware timer clock divider
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
-#define TIMER_INTERVAL0_SEC   (3.4179) // sample test interval for the first timer
-#define TIMER_INTERVAL1_SEC   (5.78)   // sample test interval for the second timer
 #define TEST_WITHOUT_RELOAD   0        // testing will be done without auto reload
 #define TEST_WITH_RELOAD      1        // testing will be done with auto reload
 
@@ -408,7 +408,8 @@ void displaypowerStates(byte index) {
 
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_16);
-  // Display Value of current setting
+
+  // Display desired contents
   if (index <= numOfSettings && menuCounter > 0) {
     if(index == 1){ // Current Temperature
       display.drawCircle(78, 25, 2);
@@ -422,11 +423,16 @@ void displaypowerStates(byte index) {
       display.drawCircle(73, 25, 2);
       display.drawString(79, 25, "C");
       display.drawString(58, 25, String(settings[0]));
+    }else if(index == 3){ // Shot Timer
+      timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
+      String shot_timer_String = String(current_shot_timer, 0);
+      display.drawString(63,25, shot_timer_String);
+      display.drawString(63+(shot_timer_String.length())*8, 25, "s");
     }else{
-      display.drawString(64, 25, String(settings[index - 1]));
+      display.drawString(63, 25, String(settings[index - 1]));
     }  
   }
-  if(index == 0){ // Reset
+  if(index == 0){ // Display large home icon
       display.drawXbm(54, 23, 20, 20, home_20);
   }
 
@@ -560,7 +566,17 @@ void setup() {
   // Initialize 2 of the 4 available Timers
   
   // I: Espressoshot-Timer
-
+  /* Initialize basic parameters of the timer */
+  timer_config_t config = {
+        alarm_en : TIMER_ALARM_DIS,
+        counter_en : TIMER_PAUSE,
+        intr_type : TIMER_INTR_LEVEL,
+        counter_dir : TIMER_COUNT_UP, // count from zero to hero
+        auto_reload : TIMER_AUTORELOAD_DIS,
+        divider : TIMER_DIVIDER,
+  };
+  timer_init(TIMER_GROUP_0, TIMER_0, &config);
+  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
 
   // II: Auto-PowerOff Timer
   
@@ -767,8 +783,20 @@ void loop() {
         case (0): // main menu button
           state_transition("mainMenu");
           break;
-        case(2): // Timer
-          // TODO: implement timer functionality
+        case(3): // Timer
+          // Start / stop or reset the timer depending on the current state
+          timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
+          if(current_shot_timer == 0){
+            timer_start(TIMER_GROUP_0, TIMER_0);
+            shot_timer_active = true;
+          }else{
+            if(shot_timer_active){
+              timer_pause(TIMER_GROUP_0, TIMER_0);
+              shot_timer_active = false;
+            }else{
+              timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+            }
+          }
           break;
       }
       clicked = false;
