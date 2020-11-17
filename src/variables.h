@@ -36,6 +36,7 @@ boolean settingsMenu = false;
 boolean clockwise = false;
 boolean anticlockwise = false;
 boolean powerState = false;
+boolean standBy = false;
 
 byte xVecSymbStatus[numOfSettings + 2];
 byte lengthSymbStatus;
@@ -61,7 +62,7 @@ String receivedString;
 unsigned long mqttPubTimer;
 
 // WiFI and MQTT variables
-boolean online_mode;
+boolean online_mode = false;
 
 //mqtt messages
 #define MSG_BUFFER_SIZE	(50)

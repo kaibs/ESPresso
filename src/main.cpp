@@ -26,10 +26,8 @@
 #include "driver/periph_ctrl.h"
 #include "driver/timer.h"
 
-#define TIMER_DIVIDER         16  //  Hardware timer clock divider
+#define TIMER_DIVIDER         10000 // 1 to 65536 accepted //  Hardware timer clock divider
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
-#define TEST_WITHOUT_RELOAD   0        // testing will be done without auto reload
-#define TEST_WITH_RELOAD      1        // testing will be done with auto reload
 
 // Variables for MQTT Server
 WiFiClient ESPresso;
@@ -61,6 +59,19 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
+void resetStandbyTimer(){
+    timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
+    standBy = false;
+    display.displayOn();
+}
+
+void resetShotTimer(){
+    timer_pause(TIMER_GROUP_0, TIMER_0);
+    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+    shot_timer_active = false;
+}
+
+
 void state_transition(char* new_state){
   /*
   Possible States:
@@ -68,25 +79,48 @@ void state_transition(char* new_state){
   - settingsMenu
   - powerState
   */
+  resetStandbyTimer();
+
   digitalWrite(ssr, LOW);
   mainMenu=false;
   settingsMenu=false;
   powerState=false;
+  if (strcmp(new_state,"standby")==0){
+    standBy = true;
+    display.displayOff();
+    digitalWrite(ssr, LOW);
+    menuCounter = 0;
+    mainMenu=true;  
+    resetShotTimer(); 
+  }
   if (strcmp(new_state,"mainMenu")==0){
     menuCounter = 0;
     mainMenu=true;  
+    resetStandbyTimer();
+    resetShotTimer(); 
+    // Set Standby Timer to 10 Minutes
+    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
+    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t((5)*TIMER_SCALE));
+    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
   }
   if (strcmp(new_state,"settingsMenu")==0){
     menuCounter = 1;
     settingsMenu=true;
     editSetting = 0;
+    resetStandbyTimer();
   }
   if (strcmp(new_state,"powerState")==0){
     menuCounter = 1;
     powerState=true;
     gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
     //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-    setpoint = settings[0]; // Desired Temperature
+    setpoint = settings[0]; // Desired Temperatur
+    resetStandbyTimer();
+    resetShotTimer();
+    // Set the Standby Timer to 30 Minutes
+    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
+    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t((30)*TIMER_SCALE));
+    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
   }
 }
 
@@ -439,15 +473,19 @@ void displaypowerStates(byte index) {
   display.display();
 }
 
+
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 // INTERRUPT     INTERRUPT     INTERRUPT     INTERRUPT     INTERRUPT
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
+// Interrupt attached to the encoder wheel
 void IRAM_ATTR isr_encoder () {
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTime = 0;
+  // Reset Standby Timer as soon as encoder moved
+  // resetStandbyTimer();
   // unsigned long interruptTime = millis();
   // If interrupts come faster than 50ms, assume it's a bounce and ignore
   if (millis() - lastInterruptTime > 100) { //100
@@ -457,22 +495,42 @@ void IRAM_ATTR isr_encoder () {
     } else {
       anticlockwise = true;
     }
-    // Keep track of when we were here last (no more than every 5ms)
+    // Keep track of when we were here last (no more than every 200ms)
     lastInterruptTime = millis();
   }
   portEXIT_CRITICAL_ISR(&mux);
 }
+// Interrupt attached to the encoder Button
 void IRAM_ATTR isr_button() {
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTimeButton = 0;
+  // Reset Standby Timer if encoder moved
+  // resetStandbyTimer();
   //unsigned long interruptTimeButton = millis();
-  // If interrupts come faster than 5ms, assume it's a bounce and ignore
+  // If interrupts come faster than 15ms, assume it's a bounce and ignore
   if (millis() - lastInterruptTimeButton > 15) {
     clicked = true;
-    // Keep track of when we were here last (no more than every 5ms)
+    // Keep track of when we were here last (no more than every 15ms)
     lastInterruptTimeButton = millis();
   }
   portEXIT_CRITICAL_ISR(&mux);
+}
+
+// Interrupt attached to the Standby Timer
+void isr_standby_timer(void *para) {
+  portENTER_CRITICAL_ISR(&mux);
+  // TIMERG0.hw_timer[TIMER_1].update = 1;
+
+  // TIMERG0.int_clr_timers.t1 = 1;
+  //portENTER_CRITICAL_ISR(&mux);
+  // Reset Standby Timer if encoder moved
+  //state_transition("standby");
+  // standBy = true;
+  // TIMERG0.hw_timer[TIMER_1].config.alarm_en = 1;
+  // TIMERG0.hw_timer[TIMER_1].config.alarm_en = TIMER_ALARM_DIS;
+
+  portEXIT_CRITICAL_ISR(&mux);
+
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -557,7 +615,7 @@ void setup() {
       }
     }
   }
-  if (WiFi.isConnected() and client.connected()){
+  if (WiFi.isConnected() and client.state()==0){
     online_mode = true;
   }else{
     online_mode = false;
@@ -567,7 +625,7 @@ void setup() {
   
   // I: Espressoshot-Timer
   /* Initialize basic parameters of the timer */
-  timer_config_t config = {
+  timer_config_t config_shot = {
         alarm_en : TIMER_ALARM_DIS,
         counter_en : TIMER_PAUSE,
         intr_type : TIMER_INTR_LEVEL,
@@ -575,11 +633,30 @@ void setup() {
         auto_reload : TIMER_AUTORELOAD_DIS,
         divider : TIMER_DIVIDER,
   };
-  timer_init(TIMER_GROUP_0, TIMER_0, &config);
+  timer_init(TIMER_GROUP_0, TIMER_0, &config_shot);
   timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
 
   // II: Auto-PowerOff Timer
-  
+  /* Initialize basic parameters of the timer */
+  timer_config_t config_standby = {
+        alarm_en : TIMER_ALARM_EN,
+        counter_en : false,
+        intr_type : TIMER_INTR_LEVEL,
+        counter_dir : TIMER_COUNT_UP, // count from zero to hero
+        auto_reload : TIMER_AUTORELOAD_DIS,
+        divider : TIMER_DIVIDER,
+  };
+  timer_init(TIMER_GROUP_0, TIMER_1, &config_standby);
+  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (uint64_t)(1800*TIMER_SCALE));
+  timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
+  timer_enable_intr(TIMER_GROUP_0, TIMER_1);
+  // timer_isr_register(TIMER_GROUP_0, TIMER_1, isr_standby_timer, (void *) TIMER_1, ESP_INTR_FLAG_IRAM, NULL);
+  timer_isr_register(TIMER_GROUP_0, TIMER_1, isr_standby_timer, (void *) TIMER_1, NULL, NULL);
+
+  // Register Timer interrupt handler for Standby timer
+  timer_start(TIMER_GROUP_0, TIMER_1);
+
+  // state_transition("mainMenu");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -589,6 +666,9 @@ void setup() {
 //////////////////////////////////////////////////////////////////////
 
 void loop() {
+  if(standBy){
+    // state_transition("standby");
+  }
   /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
   menuCounter = 1;
   while (mainMenu) {
@@ -769,15 +849,11 @@ void loop() {
     }
     if (output > now - windowStartTime){
       digitalWrite(ssr, HIGH);
-      // Serial.println("HIGH"); // Debugging 
     }
     else{    
       digitalWrite(ssr, LOW);
-      // Serial.println("LOW"); // Debugging 
     }
-    // Serial.print(input); // Debugging 
-    // Serial.print(","); // Debugging 
-    // Serial.println(output); // Debugging 
+
     if (clicked) {
       switch (menuCounter) {
         case (0): // main menu button
@@ -794,7 +870,7 @@ void loop() {
               timer_pause(TIMER_GROUP_0, TIMER_0);
               shot_timer_active = false;
             }else{
-              timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+              resetShotTimer();
             }
           }
           break;
