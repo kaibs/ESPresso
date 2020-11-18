@@ -15,7 +15,7 @@
 
 #include <EEPROM.h>
 
-#include "credentials.h"
+#include "../config/credentials.h"
 
 // Used e.g. for the timers
 #include <stdio.h>
@@ -41,7 +41,9 @@ SH1106Wire  display(0x3c, 21,22);
 // include custom xbm images for display
 #include "images.h"
 // include variables
-#include "variables.h"
+#include "../include/variables.h"
+// include settings
+#include "../config/settings.h"
 // SSR at port D25
 #define ssr 25
 
@@ -79,7 +81,8 @@ void state_transition(char* new_state){
   - settingsMenu
   - powerState
   */
-  resetStandbyTimer();
+
+  resetShotTimer(); 
 
   digitalWrite(ssr, LOW);
   mainMenu=false;
@@ -90,17 +93,16 @@ void state_transition(char* new_state){
     display.displayOff();
     digitalWrite(ssr, LOW);
     menuCounter = 0;
-    mainMenu=true;  
-    resetShotTimer(); 
   }
   if (strcmp(new_state,"mainMenu")==0){
+    standBy = false;
     menuCounter = 0;
     mainMenu=true;  
     resetStandbyTimer();
     resetShotTimer(); 
     // Set Standby Timer to 10 Minutes
     timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t((5)*TIMER_SCALE));
+    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t(AUTO_STANDBY_MAIN*TIMER_SCALE));
     timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
   }
   if (strcmp(new_state,"settingsMenu")==0){
@@ -110,6 +112,7 @@ void state_transition(char* new_state){
     resetStandbyTimer();
   }
   if (strcmp(new_state,"powerState")==0){
+    standBy = false;
     menuCounter = 1;
     powerState=true;
     gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
@@ -119,7 +122,7 @@ void state_transition(char* new_state){
     resetShotTimer();
     // Set the Standby Timer to 30 Minutes
     timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t((30)*TIMER_SCALE));
+    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t(AUTO_STANDBY_POWER*TIMER_SCALE));
     timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
   }
 }
@@ -140,7 +143,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length){
       receivedString += (char)payload[i];
     }
     if (receivedString == "ON"){
-        state_transition("powerState");
+      state_transition("powerState");
     }
     if (receivedString == "OFF"){
       state_transition("mainMenu");
@@ -497,6 +500,7 @@ void IRAM_ATTR isr_encoder () {
     }
     // Keep track of when we were here last (no more than every 200ms)
     lastInterruptTime = millis();
+    standBy = false;
   }
   portEXIT_CRITICAL_ISR(&mux);
 }
@@ -513,6 +517,7 @@ void IRAM_ATTR isr_button() {
     // Keep track of when we were here last (no more than every 15ms)
     lastInterruptTimeButton = millis();
   }
+  standBy = false;
   portEXIT_CRITICAL_ISR(&mux);
 }
 
@@ -525,10 +530,12 @@ void isr_standby_timer(void *para) {
   //portENTER_CRITICAL_ISR(&mux);
   // Reset Standby Timer if encoder moved
   //state_transition("standby");
-  // standBy = true;
+  standBy = true;
   // TIMERG0.hw_timer[TIMER_1].config.alarm_en = 1;
   // TIMERG0.hw_timer[TIMER_1].config.alarm_en = TIMER_ALARM_DIS;
 
+  
+  TIMERG0.int_clr_timers.t1 = 1;
   portEXIT_CRITICAL_ISR(&mux);
 
 }
@@ -647,7 +654,7 @@ void setup() {
         divider : TIMER_DIVIDER,
   };
   timer_init(TIMER_GROUP_0, TIMER_1, &config_standby);
-  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (uint64_t)(1800*TIMER_SCALE));
+  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (uint64_t)(10000*TIMER_SCALE));
   timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
   timer_enable_intr(TIMER_GROUP_0, TIMER_1);
   // timer_isr_register(TIMER_GROUP_0, TIMER_1, isr_standby_timer, (void *) TIMER_1, ESP_INTR_FLAG_IRAM, NULL);
@@ -666,12 +673,19 @@ void setup() {
 //////////////////////////////////////////////////////////////////////
 
 void loop() {
+  
   if(standBy){
-    // state_transition("standby");
-  }
-  /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
+    state_transition("standby");
+    // Do nothing but wait for MQTT commands and reconnect to the Internet
+    while(standBy){
+      mqtt_stuff();
+      delay(10);
+    }
+  }else{
+  state_transition("mainMenu");
+    /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
   menuCounter = 1;
-  while (mainMenu) {
+  while (mainMenu && !standBy) {
     if (anticlockwise) {
       if (menuCounter < 2) {
         menuCounter++;
@@ -709,7 +723,7 @@ void loop() {
     
   }
   /////////////////////////// SETTINGS MENU /////////////////////////////
-  while (settingsMenu) {
+  while (settingsMenu && !standBy) {
     if (clockwise) {
       if (menuCounter < numOfSettings + 1) {
         menuCounter++;
@@ -821,7 +835,7 @@ void loop() {
   }
   //////////////////////////////////// powerState ///////////////////////////////////////////////
   resetPID();
-  while (powerState) {
+  while (powerState && !standBy) {
     if (clockwise) {
       if (menuCounter < numOfpowerStates) {
         menuCounter++;
@@ -882,4 +896,6 @@ void loop() {
       mqtt_stuff();
     }
   }
+  }
+  
 }

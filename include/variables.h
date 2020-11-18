@@ -8,8 +8,6 @@ const char* namespowerStates[] = {"Home", "Temp", "Temp Des", "Timer"};
 // Main Menu States
 const byte numOfMainStates = 2;
 const char* namesMainStates[] = {"Coffee", "Settings"};
-//                       {T_soll, K_p, K_i, K_d, Temp Offset}
-int standardSettings[] = {   90,  50,  10,   5, 0}; // TODO: EEPROM statt Definition
 int settings[5];
 int powerStates[numOfpowerStates];
 const int minSetting[] = {70, 0, 0, 0, -10}; // "T_set", "K_p", "K_i", "K_d" 
@@ -36,7 +34,7 @@ boolean settingsMenu = false;
 boolean clockwise = false;
 boolean anticlockwise = false;
 boolean powerState = false;
-boolean standBy = false;
+volatile boolean standBy = false;
 
 byte xVecSymbStatus[numOfSettings + 2];
 byte lengthSymbStatus;
