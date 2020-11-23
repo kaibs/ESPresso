@@ -33,19 +33,13 @@
 WiFiClient ESPresso;
 PubSubClient client(ESPresso);
 
-// initialize display 1,3" OLED 
-SH1106Wire  display(0x3c, 21,22);
-
-// Data wire for temperature sensor is plugged into port 33 on the Arduino
-#define ONE_WIRE_BUS 33
 // include custom xbm images for display
 #include "images.h"
 // include variables
 #include "../include/variables.h"
 // include settings
 #include "../config/settings.h"
-// SSR at port D25
-#define ssr 25
+
 
 // init of PID 
 PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
@@ -55,39 +49,78 @@ DallasTemperature sensors (&oneWire);
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-//////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////
-// FUNKTIONEN   FUNKTIONEN   FUNKTIONEN   FUNKTIONEN   FUNKTIONEN
-//////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
+// FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS //
+///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
 
 void resetStandbyTimer(){
-    timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
-    standBy = false;
-    display.displayOn();
+  /*
+  Resets standby timer, leaves standby mode and turns display back on
+  */
+  timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
+  standBy = false;
+  display.displayOn();
 }
 
 void resetShotTimer(){
-    timer_pause(TIMER_GROUP_0, TIMER_0);
-    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
-    shot_timer_active = false;
+  /*
+  Resets the shottimer to prevent (potential) overflow
+  */
+  timer_pause(TIMER_GROUP_0, TIMER_0);
+  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+  shot_timer_active = false;
+}
+void setAlarm(timer_group_t TIMER_GROUP, timer_idx_t TIMER_ID, int new_time_s){
+  /*
+  TIMER_GROUP - Timer group of the timer
+  TIMER_ID - Timer number within group (TIMER_0 or TIMER_1)
+  new_time_s - New alarm in seconds
+
+  Sets specified timer to new trigger value by 
+  (1) Disarming alarm
+  (2) Setting new treshold
+  (3) Arming alarm again
+  */
+  timer_set_alarm(TIMER_GROUP, TIMER_ID, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
+  timer_set_alarm_value(TIMER_GROUP, TIMER_ID, uint64_t(new_time_s*TIMER_SCALE));
+  timer_set_alarm(TIMER_GROUP, TIMER_ID, TIMER_ALARM_EN);   // Re-enable alarm
 }
 
+void publish_state(){
+    char helpval[8];
+    String state;
+    if(powerState==true){
+      state = "ON";
+    }else{
+      state = "OFF";
+    }
+    // state.toCharArray(helpval, 8);
+    // dtostrf(currentTemperature, 6, 2, helpval);
+    // snprintf(msg_state, MSG_BUFFER_SIZE, helpval);
+    client.publish(MQTT_TOPIC_STATE, (char*) state.c_str());
+}
+
+void publish_temp(){
+    char helpval[8];
+    dtostrf(currentTemperature, 6, 2, helpval);
+    snprintf(msg_temp, MSG_BUFFER_SIZE, helpval);
+    client.publish(MQTT_TOPIC_TEMP, msg_temp);
+}
 
 void state_transition(char* new_state){
   /*
   Possible States:
+  - standby
   - mainMenu
   - settingsMenu
   - powerState
   */
 
-  resetShotTimer(); 
-
+  // Safety precaution: set Heater-SSR to LOW
   digitalWrite(ssr, LOW);
-  mainMenu=false;
-  settingsMenu=false;
-  powerState=false;
+
   if (strcmp(new_state,"standby")==0){
     standBy = true;
     display.displayOff();
@@ -95,45 +128,64 @@ void state_transition(char* new_state){
     menuCounter = 0;
   }
   if (strcmp(new_state,"mainMenu")==0){
-    standBy = false;
-    menuCounter = 0;
-    mainMenu=true;  
     resetStandbyTimer();
+    standBy = false;
+    settingsMenu=false;
+    powerState=false;
+
+    if(mainMenu == true){
+      // Already in State mainMenu, skip 
+      return;
+    }
+
+    mainMenu=true; 
+    menuCounter = 0;
+
     resetShotTimer(); 
-    // Set Standby Timer to 10 Minutes
-    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t(AUTO_STANDBY_MAIN*TIMER_SCALE));
-    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
+    // Set Standby Timer to pre-defined auto power off time
+    setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_MAIN);
+
   }
   if (strcmp(new_state,"settingsMenu")==0){
+    resetStandbyTimer();
+    mainMenu=false;
+    powerState=false;
+    editSetting = 0;
+    if(settingsMenu == true){
+      // Already in State settingsMenu, skip 
+      return;
+    }
     menuCounter = 1;
     settingsMenu=true;
-    editSetting = 0;
-    resetStandbyTimer();
   }
   if (strcmp(new_state,"powerState")==0){
+    
     standBy = false;
+    mainMenu=false;
+    settingsMenu=false;
+    resetStandbyTimer();
+
+    if(powerState == true){
+      // Already in State powerState, skip 
+      return;
+    }
     menuCounter = 1;
     powerState=true;
+
     gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
-    //PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-    setpoint = settings[0]; // Desired Temperatur
-    resetStandbyTimer();
+    setpoint = settings[0]; // Desired Temperature
+
     resetShotTimer();
-    // Set the Standby Timer to 30 Minutes
-    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, uint64_t(AUTO_STANDBY_POWER*TIMER_SCALE));
-    timer_set_alarm(TIMER_GROUP_0, TIMER_1, TIMER_ALARM_EN);   // Re-enable alarm
+    // Set the Standby timer to pre-defined auto power off time
+    setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_POWER);
   }
+  // If state was succesfully changed, send the current state via MQTT
+  publish_state();
 }
 
-void publish_temp(){
-    char helpval[8];
-    dtostrf(currentTemperature, 6, 2, helpval);
-    snprintf (msg_temp, MSG_BUFFER_SIZE, helpval);
-    client.publish(MQTT_TOPIC_TEMP, msg_temp);
-    //Serial.println("Published");
-}
+
+
+
 
 /////////////////////////////// callback for mqtt /////////////////////////////////
 void mqtt_callback(char* topic, byte* payload, unsigned int length){
@@ -153,6 +205,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length){
 
 // Connect to WIFI
 void setup_wifi(){
+  digitalWrite(ssr, LOW);
+
   display.clear();
   display.setFont(ArialMT_Plain_10);
   WiFi.setHostname("ESPresso");
@@ -187,6 +241,10 @@ void setup_wifi(){
 
 // Connect to MQTT Server
 void setup_mqtt() {
+  // In case MQTT is reconnecting during powerState
+  // TODO: don't enable MQTT and WiFi reconnecting during shot
+  digitalWrite(ssr, LOW);
+
   display.clear();
   display.setFont(ArialMT_Plain_10);
   byte progress = -1; //
@@ -257,8 +315,6 @@ void mqtt_stuff(){
   }
   // Loop the mqtt client
   client.loop();
-  //delay(100);
-
 }
 
 
@@ -672,7 +728,7 @@ void setup() {
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
-void loop() {
+void loop(){
   
   if(standBy){
     state_transition("standby");
@@ -685,26 +741,26 @@ void loop() {
   state_transition("mainMenu");
     /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
   menuCounter = 1;
-  while (mainMenu && !standBy) {
-    if (anticlockwise) {
-      if (menuCounter < 2) {
+  while(mainMenu && !standBy){
+    if(anticlockwise){
+      if (menuCounter < 2){
         menuCounter++;
-      } else if (menuCounter > 1) {
+      } else if (menuCounter > 1){
         menuCounter--;
       }
       anticlockwise = false;
     }
-    if (clockwise) {
-      if (menuCounter > 1) {
+    if(clockwise){
+      if (menuCounter > 1){
         menuCounter--;
-      } else if (menuCounter < 2) {
+      } else if (menuCounter < 2){
         menuCounter++;
       }
       clockwise = false;
     }
     displayMainMenu(1); // 1 is main menu, 2 is Settings menu
     // If encoder Button is pressed, switch to respective menu
-    if (clicked) {
+    if (clicked){
       switch (menuCounter) {
         case 1: // Power On
           state_transition("powerState");        

@@ -65,6 +65,7 @@ boolean online_mode = false;
 //mqtt messages
 #define MSG_BUFFER_SIZE	(50)
 char msg_temp[MSG_BUFFER_SIZE];
+char msg_state[MSG_BUFFER_SIZE];
 
 // Variable for the HW-Timers
 double current_shot_timer;
