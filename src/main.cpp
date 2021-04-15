@@ -600,7 +600,7 @@ void IRAM_ATTR isr_standby_timer() {
   //portENTER_CRITICAL_ISR(&mux);
   // Reset Standby Timer if encoder moved
   //state_transition("standby");
-  standBy = true
+  standBy = true;
   portEXIT_CRITICAL_ISR(&mux);
 }
 

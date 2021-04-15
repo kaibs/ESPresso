@@ -17,4 +17,6 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* MQTT_TOPIC_SWITCH = "/home/bedroom/gaggia/switch";
 // Published Topics
 const char* MQTT_TOPIC_TEMP = "/home/bedroom/gaggia/temperature";
+// State of GAGGIA
+const char* MQTT_TOPIC_STATE = "/home/bedroom/gaggia/state";
 ```
