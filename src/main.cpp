@@ -18,16 +18,17 @@
 #include "../config/credentials.h"
 
 // Used e.g. for the timers
-#include <stdio.h>
-#include "esp_types.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "driver/periph_ctrl.h"
-#include "driver/timer.h"
+// #include <stdio.h>
+// #include "esp_types.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/task.h"
+// #include "freertos/queue.h"
 
-#define TIMER_DIVIDER         10000 // 1 to 65536 accepted //  Hardware timer clock divider
-#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
+// #include "driver/periph_ctrl.h"
+// #include "driver/timer.h"
+
+// #define TIMER_DIVIDER         10000 // 1 to 65536 accepted //  Hardware timer clock divider
+// #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 
 // Variables for MQTT Server
 WiFiClient ESPresso;
@@ -49,6 +50,10 @@ DallasTemperature sensors (&oneWire);
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
+// Init Timers
+hw_timer_t * standby_timer = NULL;
+hw_timer_t * shot_timer = NULL;
+
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
 // FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS //
@@ -59,7 +64,9 @@ void resetStandbyTimer(){
   /*
   Resets standby timer, leaves standby mode and turns display back on
   */
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
+  // timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
+  // timerWrite(shot_timer, 0); // Reset Timer
+  timerRestart(shot_timer); // Restart Timer
   standBy = false;
   display.displayOn();
 }
@@ -68,14 +75,17 @@ void resetShotTimer(){
   /*
   Resets the shottimer to prevent (potential) overflow
   */
-  timer_pause(TIMER_GROUP_0, TIMER_0);
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+  // timer_pause(TIMER_GROUP_0, TIMER_0);
+  // timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
+  timerAlarmDisable(shot_timer);
+  timerStop(shot_timer);
+  timerWrite(shot_timer, 0);
   shot_timer_active = false;
 }
-void setAlarm(timer_group_t TIMER_GROUP, timer_idx_t TIMER_ID, int new_time_s){
+
+void setAlarm(hw_timer_t* timer, int new_time_s){
   /*
-  TIMER_GROUP - Timer group of the timer
-  TIMER_ID - Timer number within group (TIMER_0 or TIMER_1)
+  timer - timer identifier
   new_time_s - New alarm in seconds
 
   Sets specified timer to new trigger value by 
@@ -83,9 +93,9 @@ void setAlarm(timer_group_t TIMER_GROUP, timer_idx_t TIMER_ID, int new_time_s){
   (2) Setting new treshold
   (3) Arming alarm again
   */
-  timer_set_alarm(TIMER_GROUP, TIMER_ID, TIMER_ALARM_DIS);  // Disable alarm before setting new alarm value
-  timer_set_alarm_value(TIMER_GROUP, TIMER_ID, uint64_t(new_time_s*TIMER_SCALE));
-  timer_set_alarm(TIMER_GROUP, TIMER_ID, TIMER_ALARM_EN);   // Re-enable alarm
+  timerAlarmDisable(timer);
+  timerAlarmWrite(timer, uint64_t(new_time_s*1e6), false);
+  timerAlarmEnable(timer);
 }
 
 void publish_state(){
@@ -143,7 +153,8 @@ void state_transition(char* new_state){
 
     resetShotTimer(); 
     // Set Standby Timer to pre-defined auto power off time
-    setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_MAIN);
+    // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_MAIN);
+    setAlarm(standby_timer, AUTO_STANDBY_MAIN);
 
   }
   if (strcmp(new_state,"settingsMenu")==0){
@@ -174,10 +185,12 @@ void state_transition(char* new_state){
 
     gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
     setpoint = settings[0]; // Desired Temperature
+    timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
 
     resetShotTimer();
     // Set the Standby timer to pre-defined auto power off time
-    setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_POWER);
+    // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_POWER);
+    setAlarm(standby_timer, AUTO_STANDBY_POWER);
   }
   // If state was succesfully changed, send the current state via MQTT
   publish_state();
@@ -517,7 +530,10 @@ void displaypowerStates(byte index) {
       display.drawString(79, 25, "C");
       display.drawString(58, 25, String(settings[0]));
     }else if(index == 3){ // Shot Timer
-      timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
+      // current_shot_timer = timerAlarmReadSeconds(shot_timer);
+      // current_shot_timer = timerGetCountUp(shot_timer);
+      current_shot_timer = timerReadSeconds(shot_timer);
+      // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
       String shot_timer_String = String(current_shot_timer, 0);
       display.drawString(63,25, shot_timer_String);
       display.drawString(63+(shot_timer_String.length())*8, 25, "s");
@@ -578,22 +594,14 @@ void IRAM_ATTR isr_button() {
 }
 
 // Interrupt attached to the Standby Timer
-void isr_standby_timer(void *para) {
+// void IRAM_ATTR isr_standby_timer(void *para) {
+void IRAM_ATTR isr_standby_timer() {
   portENTER_CRITICAL_ISR(&mux);
-  // TIMERG0.hw_timer[TIMER_1].update = 1;
-
-  // TIMERG0.int_clr_timers.t1 = 1;
   //portENTER_CRITICAL_ISR(&mux);
   // Reset Standby Timer if encoder moved
   //state_transition("standby");
-  standBy = true;
-  // TIMERG0.hw_timer[TIMER_1].config.alarm_en = 1;
-  // TIMERG0.hw_timer[TIMER_1].config.alarm_en = TIMER_ALARM_DIS;
-
-  
-  TIMERG0.int_clr_timers.t1 = 1;
+  standBy = true
   portEXIT_CRITICAL_ISR(&mux);
-
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -622,6 +630,10 @@ void setup() {
   //Display initialisieren auf 0x3c Adresse
   display.init();
   display.flipScreenVertically();
+
+  display.drawString(20,20,"Hallo");
+  display.display();
+  delay(1000);
   // Calculate position of symbols in status bar in settings menu
   // display is 128x64, we need #(4 + backbutton + reset + playbutton) positions
   byte maxAbstand = (128 - (numOfSettings + 2) * 10) / (numOfSettings + 1);
@@ -687,37 +699,20 @@ void setup() {
   // Initialize 2 of the 4 available Timers
   
   // I: Espressoshot-Timer
-  /* Initialize basic parameters of the timer */
-  timer_config_t config_shot = {
-        alarm_en : TIMER_ALARM_DIS,
-        counter_en : TIMER_PAUSE,
-        intr_type : TIMER_INTR_LEVEL,
-        counter_dir : TIMER_COUNT_UP, // count from zero to hero
-        auto_reload : TIMER_AUTORELOAD_DIS,
-        divider : TIMER_DIVIDER,
-  };
-  timer_init(TIMER_GROUP_0, TIMER_0, &config_shot);
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
-
+  // Init Shot timer, Configure the Prescaler at 80 the quarter of the ESP32 is cadence at 80Mhz
+  shot_timer = timerBegin(0,80,true);
+  // timerAlarmDisable(shot_timer);
+  timerStart(shot_timer);
+  
   // II: Auto-PowerOff Timer
-  /* Initialize basic parameters of the timer */
-  timer_config_t config_standby = {
-        alarm_en : TIMER_ALARM_EN,
-        counter_en : false,
-        intr_type : TIMER_INTR_LEVEL,
-        counter_dir : TIMER_COUNT_UP, // count from zero to hero
-        auto_reload : TIMER_AUTORELOAD_DIS,
-        divider : TIMER_DIVIDER,
-  };
-  timer_init(TIMER_GROUP_0, TIMER_1, &config_standby);
-  timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (uint64_t)(10000*TIMER_SCALE));
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
-  timer_enable_intr(TIMER_GROUP_0, TIMER_1);
-  // timer_isr_register(TIMER_GROUP_0, TIMER_1, isr_standby_timer, (void *) TIMER_1, ESP_INTR_FLAG_IRAM, NULL);
-  timer_isr_register(TIMER_GROUP_0, TIMER_1, isr_standby_timer, (void *) TIMER_1, NULL, NULL);
-
-  // Register Timer interrupt handler for Standby timer
-  timer_start(TIMER_GROUP_0, TIMER_1);
+  // Init Timer
+  standby_timer = timerBegin(0,80,true);
+  // Attach Interrupt function to timer
+  timerAttachInterrupt(standby_timer, &isr_standby_timer, true);
+  // Init Timer with AUTO_STANDBY_MAIN [s]
+  timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
+  // Enable Timer
+  timerAlarmEnable(standby_timer);
 
   // state_transition("mainMenu");
 }
@@ -931,13 +926,19 @@ void loop(){
           break;
         case(3): // Timer
           // Start / stop or reset the timer depending on the current state
-          timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
+          // current_shot_timer = timerAlarmReadSeconds(shot_timer);
+          current_shot_timer = timerReadSeconds(shot_timer);
+          // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
           if(current_shot_timer == 0){
-            timer_start(TIMER_GROUP_0, TIMER_0);
+            timerStart(shot_timer);
+            // timerAlarmEnable(shot_timer);
+            // timer_start(TIMER_GROUP_0, TIMER_0);
             shot_timer_active = true;
           }else{
             if(shot_timer_active){
-              timer_pause(TIMER_GROUP_0, TIMER_0);
+              timerStop(shot_timer);
+              // timerAlarmDisable(shot_timer);
+              // timer_pause(TIMER_GROUP_0, TIMER_0);
               shot_timer_active = false;
             }else{
               resetShotTimer();
