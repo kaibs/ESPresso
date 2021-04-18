@@ -1,15 +1,13 @@
 
 // Number of Settings
-const byte numOfSettings = 5;
-const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Temp Offset", "Reset"};
+const byte numOfSettings = 7;
+const char* namesSettings[] = {"Home", "Temp", "K_P", "K_I", "K_D", "Temp Offset", "WiFi", "MQTT", "Reset"};
 // number of states during drip
 const byte numOfpowerStates = 3; //ohne Pause und Abbrechen
 const char* namespowerStates[] = {"Home", "Temp", "Temp Des", "Timer"};
 // Main Menu States
 const byte numOfMainStates = 2;
 const char* namesMainStates[] = {"Coffee", "Settings"};
-//                       {T_soll, K_p, K_i, K_d, Temp Offset}
-int standardSettings[] = {   90,  50,  10,   5, 0}; // TODO: EEPROM statt Definition
 int settings[5];
 int powerStates[numOfpowerStates];
 const int minSetting[] = {70, 0, 0, 0, -10}; // "T_set", "K_p", "K_i", "K_d" 
@@ -36,6 +34,7 @@ boolean settingsMenu = false;
 boolean clockwise = false;
 boolean anticlockwise = false;
 boolean powerState = false;
+volatile boolean standBy = false;
 
 byte xVecSymbStatus[numOfSettings + 2];
 byte lengthSymbStatus;
@@ -49,9 +48,25 @@ double setpoint = 100;
 double input;
 double output;
 
+double currentTemperature;
+
 int WindowSize = 500;
 unsigned long windowStartTime;
 
 // Variables for EEPROM
 #define EEPROM_SIZE 5
 
+String receivedString;
+unsigned long mqttPubTimer;
+
+// WiFI and MQTT variables
+boolean online_mode = false;
+
+//mqtt messages
+#define MSG_BUFFER_SIZE	(50)
+char msg_temp[MSG_BUFFER_SIZE];
+char msg_state[MSG_BUFFER_SIZE];
+
+// Variable for the HW-Timers
+double current_shot_timer;
+boolean shot_timer_active = false;
