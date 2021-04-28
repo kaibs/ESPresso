@@ -1,5 +1,6 @@
 .pio/
 .vscode/
 src/secrets.h
-config/credentials.h
+credentials.h
+credentials*
 

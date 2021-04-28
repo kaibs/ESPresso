@@ -1,58 +1,22 @@
+
 #include <Arduino.h>
-#include <PID_v1.h>
 
-// Libraries for Display
-#include <Wire.h>
-#include "SH1106Wire.h" 
+// Include credentials
+#include "credentials.h"
+// Include settings
+#include "settings.h"
+#include "init.h"
+// include variables, necessary libraries and init of sensors
+#include "ui.h"
 
-// Libraries for Temperature Sensor
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
-// Libararies for WiFI and MQTT
-#include <WiFi.h>
-#include <PubSubClient.h>
-
+// Library for EEPROM
 #include <EEPROM.h>
 
-#include "../config/credentials.h"
-
-// Used e.g. for the timers
-// #include <stdio.h>
-// #include "esp_types.h"
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/task.h"
-// #include "freertos/queue.h"
-
-// #include "driver/periph_ctrl.h"
-// #include "driver/timer.h"
-
-// #define TIMER_DIVIDER         10000 // 1 to 65536 accepted //  Hardware timer clock divider
-// #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
-
-// Variables for MQTT Server
-WiFiClient ESPresso;
-PubSubClient client(ESPresso);
-
-// include custom xbm images for display
-#include "images.h"
-// include variables
-#include "../include/variables.h"
-// include settings
-#include "../config/settings.h"
-
-
-// init of PID 
-PID gaggiaPIT(&input, &output, &setpoint, settings[1], (double)settings[2]/100, settings[3], DIRECT);
-
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors (&oneWire);
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-// Init Timers
-hw_timer_t * standby_timer = NULL;
-hw_timer_t * shot_timer = NULL;
+
 
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
@@ -99,16 +63,12 @@ void setAlarm(hw_timer_t* timer, int new_time_s){
 }
 
 void publish_state(){
-    char helpval[8];
     String state;
     if(powerState==true){
       state = "ON";
     }else{
       state = "OFF";
     }
-    // state.toCharArray(helpval, 8);
-    // dtostrf(currentTemperature, 6, 2, helpval);
-    // snprintf(msg_state, MSG_BUFFER_SIZE, helpval);
     client.publish(MQTT_TOPIC_STATE, (char*) state.c_str());
 }
 
@@ -183,7 +143,7 @@ void state_transition(char* new_state){
     menuCounter = 1;
     powerState=true;
 
-    gaggiaPIT.SetTunings(settings[1],double(settings[2])/100, settings[3]);
+    gaggiaPID.SetTunings(settings[1],double(settings[2])/100, settings[3]);
     setpoint = settings[0]; // Desired Temperature
     timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
 
@@ -222,8 +182,9 @@ void setup_wifi(){
 
   display.clear();
   display.setFont(ArialMT_Plain_10);
-  WiFi.setHostname("ESPresso");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.setHostname("ESPresso");
+
 
   byte progress = -1; //
   while (WiFi.status() != WL_CONNECTED) {
@@ -313,17 +274,17 @@ void mqtt_stuff(){
   unsigned long currentTimeDiff = millis()-mqttPubTimer;
   unsigned long currentSubDiff = millis()-mqttPubTimer;
   if (settingsMenu == true || mainMenu == true){
-    if (currentTimeDiff > 20000){
+    if (currentTimeDiff > MQTT_TIMER_MAIN*1000){
       publish_temp();
       mqttPubTimer = millis();
     }
   }else if (powerState == true){
-    if (currentTimeDiff > 1000){
+    if (currentTimeDiff > MQTT_TIMER_POWER*1000){
       publish_temp();
       mqttPubTimer = millis();
     }
   }else if (settingsMenu == true || mainMenu == true){
-    if (currentSubDiff > 1000){
+    if (currentSubDiff > MQTT_TIMER_POWER*1000){
     }
   }
   // Loop the mqtt client
@@ -334,219 +295,11 @@ void mqtt_stuff(){
 void resetPID(){
   windowStartTime = millis();
   // Settings for PID
-  gaggiaPIT.SetOutputLimits(0, WindowSize);
-  gaggiaPIT.SetMode(AUTOMATIC);
+  gaggiaPID.SetOutputLimits(0, WindowSize);
+  gaggiaPID.SetMode(AUTOMATIC);
 }
 
-/////////////////////////////// displayTemperature////////////////////////////////
-void displayTemperature(){
-  sensors.requestTemperatures();
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.setFont(ArialMT_Plain_10);
 
-  currentTemperature = sensors.getTempCByIndex(0)+settings[4];
-  int currentTempInt = (int)currentTemperature;
-  String current_Temp_string;
-  if (currentTempInt < 0){
-    current_Temp_string = "ERR";
-  } else if (currentTempInt < 100){
-    current_Temp_string = "  " + String(currentTempInt);
-  } else{
-    current_Temp_string = String(currentTempInt);
-  }
-    display.setFont(ArialMT_Plain_10);
-
-  display.drawString(2, 0, String(current_Temp_string));
-  display.drawCircle(25,2,1);
-  display.drawString(28,0, "C");
-}
-
-///////////////////////////////displaySettings////////////////////////////////////
-void displaySettings(int index) {
-  display.clear();
-  displayTemperature();
-  display.flipScreenVertically();
-  // Settingsbutton oben mitte
-  display.drawXbm(59, 2, 10, 10, settingsbutton10);
-  // Left Side: home button, middle: circle indicators
-  if (index == 0){
-      display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10_filled);
-  } else{
-      display.drawXbm(xVecSymbStatus[0], 54, 10, 10, home_10);
-  }
-  for (int i = 1; i < numOfSettings + 1; i++) { 
-    byte x = xVecSymbStatus[i];
-    if (i == index && i < numOfSettings + 1) {
-      display.drawXbm(x, 54, 10, 10, roundfilled_10);
-    } else if (i > 0 && i < numOfSettings + 1) {
-      display.drawXbm(x, 54, 10, 10, round_10);
-    }
-  }
-  if (index == numOfSettings+1){
-      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10_filled);
-  } else{
-      display.drawXbm(xVecSymbStatus[numOfSettings+1], 54, 10, 10, trash_10);
-  }
-  
-  // Display name of setting in upper right corner
-  display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(128, 0, namesSettings[index]);
-
-  
-  // Display Value of current setting
-  if (index <= numOfSettings && menuCounter > 0) {
-    if(index == 3){ // K_i
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);
-      if(settings[2] == 100){
-         display.drawString(64, 25, "1.0");
-      }else{ 
-        // String(double(settings[2]/100), 2)
-        // display.drawString(50, 35, "0."+ String(settings[2]));
-        display.drawString(64, 25, String((double)settings[2]/100, 2));
-      }
-    }else if(index == 1 || index == 5){ // Desired Temperature || Temp Offset
-      // Display °C after setting
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);  
-      display.drawCircle(73, 25, 2);
-      display.drawString(79, 25, "C");
-      display.drawString(58, 25, String(settings[index - 1]));
-    }else if(index == 6){ // Display WiFi Settings
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.setFont(ArialMT_Plain_10);
-      if (WiFi.status() != WL_CONNECTED){
-        display.setTextAlignment(TEXT_ALIGN_CENTER);
-        display.drawString(64,20, "No WiFi Connection.");
-        display.drawString(64,35, "Press to retry.");
-      }else {
-        display.setTextAlignment(TEXT_ALIGN_CENTER);
-        display.drawString(64,20, "IP: "+ WiFi.localIP().toString());
-      }
-
-    }else if(index == 7){// Display MQTT Settings
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.setFont(ArialMT_Plain_10);
-      if (client.state() != 0){
-        display.setTextAlignment(TEXT_ALIGN_CENTER);
-        display.drawString(64,18, "No MQTT Connection.");
-        display.drawString(64,29, "State: " + String(client.state()));
-        display.drawString(64,40, "Press to retry.");
-      }else {
-        display.setTextAlignment(TEXT_ALIGN_CENTER);
-        display.drawString(64,20, "Connected!");
-      }
-
-    }else{ // Just display regular setting
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);
-      display.drawString(64, 25, String(settings[index - 1]));
-    }  
-  }
-  if(index == numOfSettings+1){ // Reset
-      display.drawXbm(54, 23, 20, 20, trash_20);
-  }
-  if(index == 0){ // Home Menu
-      display.drawXbm(54, 23, 20, 20, home_20);
-  }
-
-  display.display();
-}
-///////////////////////////////displayMainMenu///////////////////////////////////
-void displayMainMenu(byte index) {
-  // index == 1 -> mainMenu // Standby
-  // index == 2 -> pauseMenu !! nicht mehr existent !!
-  display.clear();
-  display.drawXbm(59, 0, 10, 10, home_10);
-  displayTemperature();
-  
-  //display.drawLine(0,11,128,11,WHITE);
-  switch (menuCounter) {
-    case 1:
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.drawXbm(12, 20, 40, 40,espresso_cup40);
-      display.drawXbm(81, 25, 30,30, settingsbutton30);
-      display.setTextAlignment(TEXT_ALIGN_RIGHT);
-      display.drawString(128, 0, namesMainStates[0]);
-      break;
-    case 2:
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.drawXbm(17, 25, 30, 30, espresso_cup30);
-      display.drawXbm(76, 20, 40, 40, settingsbutton40);
-      display.setTextAlignment(TEXT_ALIGN_RIGHT);
-      display.drawString(128, 0, namesMainStates[1]);
-      break;
-  }
-  display.display();
-}
-///////////////////////////////displaypowerState///////////////////////////////////
-void displaypowerStates(byte index) {
-  display.clear();
-  display.drawXbm(59, 2, 10, 10, espresso_10);
-  displayTemperature(); // display Temperature in upper left corner
-
-  // Left Side: - middle: circle, right side: stop
-  for (int i = 1; i < numOfpowerStates; i++) { 
-    byte x = xVecDripSymbStatus[i];
-    if (i == index && i < numOfpowerStates+1) {
-      display.drawXbm(x, 54, 10,10,roundfilled_10);
-    } else if (i >= 0 && i < numOfpowerStates+1) {
-      display.drawXbm(x, 54, 10, 10, round_10);
-    }
-  }
-  // Draw Home Icon to return to the main menu
-  if (index == 0){
-      display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10_filled);
-  } else{
-      display.drawXbm(xVecDripSymbStatus[0], 54, 10, 10, home_10);
-  }
-  // Draw hourglass for timer function
-  if (index == 3){
-      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10_filled);
-  } else{
-      display.drawXbm(xVecDripSymbStatus[3], 54, 10, 10, hourglass_10);
-  }
-  // Display Name of menu in upper right corner
-  display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(128, 0, namespowerStates[index]);
-
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.setFont(ArialMT_Plain_16);
-
-  // Display desired contents
-  if (index <= numOfSettings && menuCounter > 0) {
-    if(index == 1){ // Current Temperature
-      display.drawCircle(78, 25, 2);
-      display.drawString(84, 25, "C");
-      if (currentTemperature<0){
-        display.drawString(58, 25, "ERR");
-      }else{
-        display.drawString(58, 25, String(currentTemperature,1));
-      }
-    }else if(index == 2){ // Desired Temperature
-      display.drawCircle(73, 25, 2);
-      display.drawString(79, 25, "C");
-      display.drawString(58, 25, String(settings[0]));
-    }else if(index == 3){ // Shot Timer
-      // current_shot_timer = timerAlarmReadSeconds(shot_timer);
-      // current_shot_timer = timerGetCountUp(shot_timer);
-      current_shot_timer = timerReadSeconds(shot_timer);
-      // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
-      String shot_timer_String = String(current_shot_timer, 0);
-      display.drawString(63,25, shot_timer_String);
-      display.drawString(63+(shot_timer_String.length())*8, 25, "s");
-    }else{
-      display.drawString(63, 25, String(settings[index - 1]));
-    }  
-  }
-  if(index == 0){ // Display large home icon
-      display.drawXbm(54, 23, 20, 20, home_20);
-  }
-
-  display.display();
-}
 
 
 //////////////////////////////////////////////////////////////////////
@@ -564,7 +317,7 @@ void IRAM_ATTR isr_encoder () {
   // unsigned long interruptTime = millis();
   // If interrupts come faster than 50ms, assume it's a bounce and ignore
   if (millis() - lastInterruptTime > 100) { //100
-    if (digitalRead(Pin_CLK) == HIGH)
+    if (digitalRead(encoder_clk) == HIGH)
     {
       clockwise = true;
     } else {
@@ -612,20 +365,20 @@ void IRAM_ATTR isr_standby_timer() {
 
 void setup() {
   Serial.begin(115200);
-  (Pin_CLK, INPUT);
+  (encoder_clk, INPUT);
 
   EEPROM.begin(EEPROM_SIZE);
 
-  pinMode(Pin_DT, INPUT_PULLUP);
-  pinMode(Pin_SW, INPUT_PULLUP);
+  pinMode(encoder_dt, INPUT_PULLUP);
+  pinMode(encoder_sw, INPUT_PULLUP);
   pinMode(ssr, OUTPUT);
 
   sensors.begin(); //begin measurement of temperature sensor
   sensors.setResolution(9);
  
-  //digitalWrite(Pin_SW, HIGH); //turn pullup resistor on
-  attachInterrupt(digitalPinToInterrupt(Pin_DT), isr_encoder, FALLING);
-  attachInterrupt(digitalPinToInterrupt(Pin_SW), isr_button, RISING);
+  //digitalWrite(encoder_sw, HIGH); //turn pullup resistor on
+  attachInterrupt(digitalPinToInterrupt(encoder_dt), isr_encoder, FALLING);
+  attachInterrupt(digitalPinToInterrupt(encoder_sw), isr_button, RISING);
   
   //Display initialisieren auf 0x3c Adresse
   display.init();
@@ -842,12 +595,22 @@ void loop(){
       }
     }
     if (clicked) {
+      // int resetIndex = numOfSettings + 1;
       switch (menuCounter) {
         case 0: // User choose return
           state_transition("mainMenu");
           break;
-        // Reset EEPROM Parameters to Standard Setttings
-        case (numOfSettings+1):
+        // Reconnect to WiFi
+        case 6:
+          setup_wifi();
+          break;
+        // Reconnect to MQTT
+        case 7:
+          setup_mqtt();
+          break;
+      }
+      if (menuCounter == numOfSettings + 1){
+          // Reset EEPROM Parameters to Standard Setttings
           settings[0] = standardSettings[0];
           settings[1] = standardSettings[1];
           settings[2] = standardSettings[2];
@@ -859,15 +622,6 @@ void loop(){
           EEPROM.write(3, settings[3]);        
           EEPROM.write(4, settings[4]);  
           EEPROM.commit();
-          break;
-        // Reconnect to WiFi
-        case 6:
-          setup_wifi();
-          break;
-        // Reconnect to MQTT
-        case 7:
-          setup_mqtt();
-          break;
       }
       // Only try to edit setting, when there is a editable one (all except home, wifi, mqtt, reset)
       if (menuCounter <= numOfSettings - 2 && menuCounter > 0) {
@@ -906,7 +660,7 @@ void loop(){
     displaypowerStates(menuCounter);
     sensors.requestTemperatures();
     input = sensors.getTempCByIndex(0)+settings[4]; // measured temperature + offset
-    gaggiaPIT.Compute();
+    gaggiaPID.Compute();
     unsigned long now = millis();
     if (now - windowStartTime > WindowSize)
     { //time to shift the Relay Window
