@@ -1,7 +1,7 @@
 ***Template for Credentials*** \
 Save your credentials in a file 
 ```
-config/credentials.h
+include/credentials.h
 ```
 using the following template:
 
