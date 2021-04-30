@@ -1,4 +1,4 @@
-#pragma once
+// #pragma once
 
 #include "settings.h"
 
@@ -13,9 +13,9 @@ const int standardSettings[] = {   90,   50,  10,   5,           0};
 
 // Time [s] after which ESPresso goes to standby from:
 // (1) Main Menu
-const int AUTO_STANDBY_MAIN = 600;
+const int AUTO_STANDBY_MAIN = 3;
 // (2) Power State
-const int AUTO_STANDBY_POWER = 1800;
+const int AUTO_STANDBY_POWER = 10;
 
 // Publish MQTT Data ever (...) seconds
 const uint8_t MQTT_TIMER_MAIN = 20;

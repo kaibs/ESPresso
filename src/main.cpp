@@ -23,14 +23,27 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 // FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS     FUNCTIONS //
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
+void setAlarm(hw_timer_t* timer, int new_time_s){
+  /*
+  timer - timer identifier
+  new_time_s - New alarm in seconds
+
+  Sets specified timer to new trigger value by 
+  (1) Disarming alarm
+  (2) Setting new treshold
+  (3) Arming alarm again
+  */
+  timerAlarmDisable(timer);
+  timerAlarmWrite(timer, uint64_t(new_time_s*1e6), true);
+  timerAlarmEnable(timer);
+}
 
 void resetStandbyTimer(){
   /*
   Resets standby timer, leaves standby mode and turns display back on
   */
-  // timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0);
-  // timerWrite(shot_timer, 0); // Reset Timer
-  timerRestart(shot_timer); // Restart Timer
+  timerRestart(standby_timer); // Restart Timer
+  timerWrite(standby_timer, 0);
   standBy = false;
   display.displayOn();
 }
@@ -45,21 +58,6 @@ void resetShotTimer(){
   timerStop(shot_timer);
   timerWrite(shot_timer, 0);
   shot_timer_active = false;
-}
-
-void setAlarm(hw_timer_t* timer, int new_time_s){
-  /*
-  timer - timer identifier
-  new_time_s - New alarm in seconds
-
-  Sets specified timer to new trigger value by 
-  (1) Disarming alarm
-  (2) Setting new treshold
-  (3) Arming alarm again
-  */
-  timerAlarmDisable(timer);
-  timerAlarmWrite(timer, uint64_t(new_time_s*1e6), false);
-  timerAlarmEnable(timer);
 }
 
 void publish_state(){
@@ -112,10 +110,14 @@ void state_transition(char* new_state){
     menuCounter = 0;
 
     resetShotTimer(); 
+    
     // Set Standby Timer to pre-defined auto power off time
     // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_MAIN);
     setAlarm(standby_timer, AUTO_STANDBY_MAIN);
+      // Init Timer with AUTO_STANDBY_MAIN [s]
+    // resetStandbyTimer();
 
+    // timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
   }
   if (strcmp(new_state,"settingsMenu")==0){
     resetStandbyTimer();
@@ -130,27 +132,27 @@ void state_transition(char* new_state){
     settingsMenu=true;
   }
   if (strcmp(new_state,"powerState")==0){
-    
+    Serial.println("Power State");
+    resetStandbyTimer();
     standBy = false;
     mainMenu=false;
     settingsMenu=false;
-    resetStandbyTimer();
 
     if(powerState == true){
       // Already in State powerState, skip 
       return;
     }
+    Serial.println("Init PID");
     menuCounter = 1;
     powerState=true;
 
     gaggiaPID.SetTunings(settings[1],double(settings[2])/100, settings[3]);
     setpoint = settings[0]; // Desired Temperature
-    timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
 
     resetShotTimer();
     // Set the Standby timer to pre-defined auto power off time
     // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_POWER);
-    setAlarm(standby_timer, AUTO_STANDBY_POWER);
+    setAlarm(standby_timer, AUTO_STANDBY_MAIN);
   }
   // If state was succesfully changed, send the current state via MQTT
   publish_state();
@@ -171,6 +173,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length){
       state_transition("powerState");
     }
     if (receivedString == "OFF"){
+      standBy = true;
       state_transition("mainMenu");
     }
   }
@@ -323,7 +326,7 @@ void IRAM_ATTR isr_encoder () {
     } else {
       anticlockwise = true;
     }
-    // Keep track of when we were here last (no more than every 200ms)
+    // Keep track of when we were here last
     lastInterruptTime = millis();
     standBy = false;
   }
@@ -354,6 +357,7 @@ void IRAM_ATTR isr_standby_timer() {
   // Reset Standby Timer if encoder moved
   //state_transition("standby");
   standBy = true;
+  Serial.println("Timer Trigger");
   portEXIT_CRITICAL_ISR(&mux);
 }
 
@@ -462,10 +466,14 @@ void setup() {
   standby_timer = timerBegin(0,80,true);
   // Attach Interrupt function to timer
   timerAttachInterrupt(standby_timer, &isr_standby_timer, true);
+  
+  setAlarm(standby_timer, AUTO_STANDBY_POWER);
+  
   // Init Timer with AUTO_STANDBY_MAIN [s]
-  timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
+  // timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
   // Enable Timer
   timerAlarmEnable(standby_timer);
+  
 
   // state_transition("mainMenu");
 }
@@ -479,234 +487,239 @@ void setup() {
 void loop(){
   
   if(standBy){
-    state_transition("standby");
+    // Serial.println("Standby!!!!");
+    if (mainMenu){
+      state_transition("standby");
+    }else{
+      state_transition("mainMenu");
+    }
     // Do nothing but wait for MQTT commands and reconnect to the Internet
     while(standBy){
       mqtt_stuff();
       delay(10);
+      // Serial.println("Standby!!!! Loop");
     }
   }else{
-  state_transition("mainMenu");
-    /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
-  menuCounter = 1;
-  while(mainMenu && !standBy){
-    if(anticlockwise){
-      if (menuCounter < 2){
-        menuCounter++;
-      } else if (menuCounter > 1){
-        menuCounter--;
+    state_transition("mainMenu");
+      /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
+    menuCounter = 1;
+    while(mainMenu && !standBy){
+      if(anticlockwise){
+        if (menuCounter < 2){
+          menuCounter++;
+        } else if (menuCounter > 1){
+          menuCounter--;
+        }
+        anticlockwise = false;
       }
-      anticlockwise = false;
-    }
-    if(clockwise){
-      if (menuCounter > 1){
-        menuCounter--;
-      } else if (menuCounter < 2){
-        menuCounter++;
+      if(clockwise){
+        if (menuCounter > 1){
+          menuCounter--;
+        } else if (menuCounter < 2){
+          menuCounter++;
+        }
+        clockwise = false;
       }
-      clockwise = false;
-    }
-    displayMainMenu(1); // 1 is main menu, 2 is Settings menu
-    // If encoder Button is pressed, switch to respective menu
-    if (clicked){
-      switch (menuCounter) {
-        case 1: // Power On
-          state_transition("powerState");        
-          break;
-        case 2: // Settings
-          state_transition("settingsMenu");
-          break;
+      displayMainMenu(1); // 1 is main menu, 2 is Settings menu
+      // If encoder Button is pressed, switch to respective menu
+      if (clicked){
+        switch (menuCounter) {
+          case 1: // Power On
+            state_transition("powerState");        
+            break;
+          case 2: // Settings
+            state_transition("settingsMenu");
+            break;
+        }
+        mainMenu = false;
+        clicked = false;      
       }
-      mainMenu = false;
-      clicked = false;      
-    }
-    if(online_mode){
-      // Call MQTT handler
-      mqtt_stuff();
-    }
-    
-  }
-  /////////////////////////// SETTINGS MENU /////////////////////////////
-  while (settingsMenu && !standBy) {
-    if (clockwise) {
-      if (menuCounter < numOfSettings + 1) {
-        menuCounter++;
-      } else if (menuCounter > numOfSettings) {
-        menuCounter = 0;
+      if(online_mode){
+        // Call MQTT handler
+        mqtt_stuff();
       }
-      clockwise = false;
+      
     }
-    if (anticlockwise) {
-      if (menuCounter > 0) {
-        menuCounter--;
-      } else if (menuCounter < numOfSettings) {
-        menuCounter = numOfSettings + 1;
+    /////////////////////////// SETTINGS MENU /////////////////////////////
+    while (settingsMenu && !standBy) {
+      if (clockwise) {
+        if (menuCounter < numOfSettings + 1) {
+          menuCounter++;
+        } else if (menuCounter > numOfSettings) {
+          menuCounter = 0;
+        }
+        clockwise = false;
       }
-      anticlockwise = false;
-    }
-    displaySettings(menuCounter);
+      if (anticlockwise) {
+        if (menuCounter > 0) {
+          menuCounter--;
+        } else if (menuCounter < numOfSettings) {
+          menuCounter = numOfSettings + 1;
+        }
+        anticlockwise = false;
+      }
+      displaySettings(menuCounter);
 
-    // If there is a setting to edit, do so
-    while (editSetting != 0) {
-      switch (editSetting) {
-        case 1: // T_set
-          change = 1;
-          break;
-        case 2: // K_p
-          change = 1;
-          break;
-        case 3: // K_i
-          change = 1;
-          break;
-        case 4: // K_d
-          change = 1;
-          break;
-        case 5: // Temperature Offset
-          change = 1;
-          break;
-      }
-      if(editSetting < numOfSettings + 2){
-        if (anticlockwise) {
-          if (settings[editSetting - 1] - change > minSetting[editSetting - 1]) {
-            settings[editSetting - 1] -= change;
-          } else {
-            settings[editSetting - 1] = minSetting[editSetting - 1];
-          }
-          anticlockwise = false;
+      // If there is a setting to edit, do so
+      while (editSetting != 0) {
+        switch (editSetting) {
+          case 1: // T_set
+            change = 1;
+            break;
+          case 2: // K_p
+            change = 1;
+            break;
+          case 3: // K_i
+            change = 1;
+            break;
+          case 4: // K_d
+            change = 1;
+            break;
+          case 5: // Temperature Offset
+            change = 1;
+            break;
         }
-        if (clockwise) {
-          if (settings[editSetting - 1] + change < maxSetting[editSetting - 1]) {
-            settings[editSetting - 1] += change;
-          } else {
-            settings[editSetting - 1] = maxSetting[editSetting - 1];
+        if(editSetting < numOfSettings + 2){
+          if (anticlockwise) {
+            if (settings[editSetting - 1] - change > minSetting[editSetting - 1]) {
+              settings[editSetting - 1] -= change;
+            } else {
+              settings[editSetting - 1] = minSetting[editSetting - 1];
+            }
+            anticlockwise = false;
           }
-          clockwise = false;
+          if (clockwise) {
+            if (settings[editSetting - 1] + change < maxSetting[editSetting - 1]) {
+              settings[editSetting - 1] += change;
+            } else {
+              settings[editSetting - 1] = maxSetting[editSetting - 1];
+            }
+            clockwise = false;
+          }
+        }
+        displaySettings(editSetting);
+        // exit edit of setting in case button is pressed
+        if (clicked) {        
+          EEPROM.write(editSetting-1, settings[editSetting - 1]);
+          EEPROM.commit();
+          // TODO
+          menuCounter = editSetting;
+          editSetting = 0;
+          clicked = false;
         }
       }
-      displaySettings(editSetting);
-      // exit edit of setting in case button is pressed
-      if (clicked) {        
-        EEPROM.write(editSetting-1, settings[editSetting - 1]);
-        EEPROM.commit();
-        // TODO
-        menuCounter = editSetting;
-        editSetting = 0;
+      if (clicked) {
+        // int resetIndex = numOfSettings + 1;
+        switch (menuCounter) {
+          case 0: // User choose return
+            state_transition("mainMenu");
+            break;
+          // Reconnect to WiFi
+          case 6:
+            setup_wifi();
+            break;
+          // Reconnect to MQTT
+          case 7:
+            setup_mqtt();
+            break;
+        }
+        if (menuCounter == numOfSettings + 1){
+            // Reset EEPROM Parameters to Standard Setttings
+            settings[0] = standardSettings[0];
+            settings[1] = standardSettings[1];
+            settings[2] = standardSettings[2];
+            settings[3] = standardSettings[3];
+            settings[4] = standardSettings[4];
+            EEPROM.write(0, settings[0]);
+            EEPROM.write(1, settings[1]);
+            EEPROM.write(2, settings[2]);
+            EEPROM.write(3, settings[3]);        
+            EEPROM.write(4, settings[4]);  
+            EEPROM.commit();
+        }
+        // Only try to edit setting, when there is a editable one (all except home, wifi, mqtt, reset)
+        if (menuCounter <= numOfSettings - 2 && menuCounter > 0) {
+          if (editSetting != 0) {
+            editSetting = 0;
+          } else {
+            editSetting = menuCounter; // editSetting between 1 and numOfSettings-1
+          }
+        }
         clicked = false;
       }
+      if(online_mode){
+        // Call MQTT handler
+        mqtt_stuff();
+      }
     }
-    if (clicked) {
-      // int resetIndex = numOfSettings + 1;
-      switch (menuCounter) {
-        case 0: // User choose return
-          state_transition("mainMenu");
-          break;
-        // Reconnect to WiFi
-        case 6:
-          setup_wifi();
-          break;
-        // Reconnect to MQTT
-        case 7:
-          setup_mqtt();
-          break;
-      }
-      if (menuCounter == numOfSettings + 1){
-          // Reset EEPROM Parameters to Standard Setttings
-          settings[0] = standardSettings[0];
-          settings[1] = standardSettings[1];
-          settings[2] = standardSettings[2];
-          settings[3] = standardSettings[3];
-          settings[4] = standardSettings[4];
-          EEPROM.write(0, settings[0]);
-          EEPROM.write(1, settings[1]);
-          EEPROM.write(2, settings[2]);
-          EEPROM.write(3, settings[3]);        
-          EEPROM.write(4, settings[4]);  
-          EEPROM.commit();
-      }
-      // Only try to edit setting, when there is a editable one (all except home, wifi, mqtt, reset)
-      if (menuCounter <= numOfSettings - 2 && menuCounter > 0) {
-        if (editSetting != 0) {
-          editSetting = 0;
-        } else {
-          editSetting = menuCounter; // editSetting between 1 and numOfSettings-1
+    //////////////////////////////////// powerState ///////////////////////////////////////////////
+    resetPID();
+    while (powerState && !standBy) {
+      if (clockwise) {
+        if (menuCounter < numOfpowerStates) {
+          menuCounter++;
+        }else if (menuCounter == numOfpowerStates) {
+          menuCounter = 0;
         }
+        clockwise = false;
       }
-      clicked = false;
-    }
-    if(online_mode){
-      // Call MQTT handler
-      mqtt_stuff();
-    }
-  }
-  //////////////////////////////////// powerState ///////////////////////////////////////////////
-  resetPID();
-  while (powerState && !standBy) {
-    if (clockwise) {
-      if (menuCounter < numOfpowerStates) {
-        menuCounter++;
-      }else if (menuCounter == numOfpowerStates) {
-        menuCounter = 0;
+      if (anticlockwise) {
+        if (menuCounter > 0) {
+          menuCounter--;
+        } else if (menuCounter < numOfpowerStates) {
+          menuCounter = numOfpowerStates;
+        }
+        anticlockwise = false;
       }
-      clockwise = false;
-    }
-    if (anticlockwise) {
-      if (menuCounter > 0) {
-        menuCounter--;
-      } else if (menuCounter < numOfpowerStates) {
-        menuCounter = numOfpowerStates;
+      displaypowerStates(menuCounter);
+      sensors.requestTemperatures();
+      input = sensors.getTempCByIndex(0)+settings[4]; // measured temperature + offset
+      gaggiaPID.Compute();
+      unsigned long now = millis();
+      if (now - windowStartTime > WindowSize){ //time to shift the Relay Window
+        windowStartTime += WindowSize;
       }
-      anticlockwise = false;
-    }
-    displaypowerStates(menuCounter);
-    sensors.requestTemperatures();
-    input = sensors.getTempCByIndex(0)+settings[4]; // measured temperature + offset
-    gaggiaPID.Compute();
-    unsigned long now = millis();
-    if (now - windowStartTime > WindowSize)
-    { //time to shift the Relay Window
-      windowStartTime += WindowSize;
-    }
-    if (output > now - windowStartTime){
-      digitalWrite(ssr, HIGH);
-    }
-    else{    
-      digitalWrite(ssr, LOW);
-    }
+      if (output > now - windowStartTime){
+        digitalWrite(ssr, HIGH);
+      }
+      else{    
+        digitalWrite(ssr, LOW);
+      }
 
-    if (clicked) {
-      switch (menuCounter) {
-        case (0): // main menu button
-          state_transition("mainMenu");
-          break;
-        case(3): // Timer
-          // Start / stop or reset the timer depending on the current state
-          // current_shot_timer = timerAlarmReadSeconds(shot_timer);
-          current_shot_timer = timerReadSeconds(shot_timer);
-          // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
-          if(current_shot_timer == 0){
-            timerStart(shot_timer);
-            // timerAlarmEnable(shot_timer);
-            // timer_start(TIMER_GROUP_0, TIMER_0);
-            shot_timer_active = true;
-          }else{
-            if(shot_timer_active){
-              timerStop(shot_timer);
-              // timerAlarmDisable(shot_timer);
-              // timer_pause(TIMER_GROUP_0, TIMER_0);
-              shot_timer_active = false;
+      if (clicked) {
+        switch (menuCounter) {
+          case (0): // main menu button
+            state_transition("mainMenu");
+            break;
+          case(3): // Timer
+            // Start / stop or reset the timer depending on the current state
+            // current_shot_timer = timerAlarmReadSeconds(shot_timer);
+            current_shot_timer = timerReadSeconds(shot_timer);
+            // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_0, &current_shot_timer);
+            if(current_shot_timer == 0){
+              timerStart(shot_timer);
+              // timerAlarmEnable(shot_timer);
+              // timer_start(TIMER_GROUP_0, TIMER_0);
+              shot_timer_active = true;
             }else{
-              resetShotTimer();
+              if(shot_timer_active){
+                timerStop(shot_timer);
+                // timerAlarmDisable(shot_timer);
+                // timer_pause(TIMER_GROUP_0, TIMER_0);
+                shot_timer_active = false;
+              }else{
+                resetShotTimer();
+              }
             }
-          }
-          break;
+            break;
+        }
+        clicked = false;
       }
-      clicked = false;
+      if(online_mode){
+        // Call MQTT handler
+        mqtt_stuff();
+      }
     }
-    if(online_mode){
-      // Call MQTT handler
-      mqtt_stuff();
-    }
-  }
   }
   
-}
+} 
