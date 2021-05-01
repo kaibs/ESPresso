@@ -4,5 +4,5 @@
 
 void displayTemperature();
 void displaySettings(int index);
-void displayMainMenu(byte index);
+void displayMainMenu();
 void displaypowerStates(byte index);

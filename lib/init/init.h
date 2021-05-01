@@ -59,7 +59,7 @@ extern String receivedString;
 extern unsigned long mqttPubTimer;
 
 // WiFI and MQTT variables
-extern boolean online_mode;
+// extern boolean online_mode;
 
 //mqtt messages
 extern const uint8_t MSG_BUFFER_SIZE;

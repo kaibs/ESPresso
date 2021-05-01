@@ -6,17 +6,15 @@
 // Include settings
 #include "settings.h"
 #include "init.h"
-// include variables, necessary libraries and init of sensors
+// library for displaying UI
 #include "ui.h"
 
 
 // Library for EEPROM
 #include <EEPROM.h>
 
-
+// Necessary for Interrupts
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-
-
 
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
@@ -42,22 +40,27 @@ void resetStandbyTimer(){
   /*
   Resets standby timer, leaves standby mode and turns display back on
   */
-  timerRestart(standby_timer); // Restart Timer
+  // timerRestart(standby_timer); // Restart Timer
   timerWrite(standby_timer, 0);
+  timerAlarmEnable(standby_timer);
   standBy = false;
-  display.displayOn();
 }
 
 void resetShotTimer(){
   /*
-  Resets the shottimer to prevent (potential) overflow
+  Resets the shot_timer to prevent (potential) overflow
   */
-  // timer_pause(TIMER_GROUP_0, TIMER_0);
-  // timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
   timerAlarmDisable(shot_timer);
   timerStop(shot_timer);
   timerWrite(shot_timer, 0);
   shot_timer_active = false;
+}
+
+void stopTimers(){
+  timerAlarmDisable(shot_timer);
+  timerWrite(shot_timer, 0);
+  timerAlarmDisable(standby_timer);
+  timerWrite(standby_timer, 0);
 }
 
 void publish_state(){
@@ -94,8 +97,10 @@ void state_transition(char* new_state){
     display.displayOff();
     digitalWrite(ssr, LOW);
     menuCounter = 0;
+    stopTimers();
   }
   if (strcmp(new_state,"mainMenu")==0){
+    display.displayOn();
     resetStandbyTimer();
     standBy = false;
     settingsMenu=false;
@@ -112,14 +117,10 @@ void state_transition(char* new_state){
     resetShotTimer(); 
     
     // Set Standby Timer to pre-defined auto power off time
-    // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_MAIN);
     setAlarm(standby_timer, AUTO_STANDBY_MAIN);
-      // Init Timer with AUTO_STANDBY_MAIN [s]
-    // resetStandbyTimer();
-
-    // timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
   }
   if (strcmp(new_state,"settingsMenu")==0){
+    display.displayOn();
     resetStandbyTimer();
     mainMenu=false;
     powerState=false;
@@ -132,7 +133,7 @@ void state_transition(char* new_state){
     settingsMenu=true;
   }
   if (strcmp(new_state,"powerState")==0){
-    Serial.println("Power State");
+    display.displayOn();
     resetStandbyTimer();
     standBy = false;
     mainMenu=false;
@@ -142,7 +143,6 @@ void state_transition(char* new_state){
       // Already in State powerState, skip 
       return;
     }
-    Serial.println("Init PID");
     menuCounter = 1;
     powerState=true;
 
@@ -151,15 +151,11 @@ void state_transition(char* new_state){
 
     resetShotTimer();
     // Set the Standby timer to pre-defined auto power off time
-    // setAlarm(TIMER_GROUP_0, TIMER_1, AUTO_STANDBY_POWER);
-    setAlarm(standby_timer, AUTO_STANDBY_MAIN);
+    setAlarm(standby_timer, AUTO_STANDBY_POWER);
   }
   // If state was succesfully changed, send the current state via MQTT
   publish_state();
 }
-
-
-
 
 
 /////////////////////////////// callback for mqtt /////////////////////////////////
@@ -170,11 +166,13 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length){
       receivedString += (char)payload[i];
     }
     if (receivedString == "ON"){
+      // powerState = false;
+      resetStandbyTimer();
       state_transition("powerState");
     }
     if (receivedString == "OFF"){
       standBy = true;
-      state_transition("mainMenu");
+      stopTimers();
     }
   }
 }
@@ -260,7 +258,6 @@ void setup_mqtt() {
   if (client.connected()){
     online_mode = true;
   }
-
 }
 
 /////////////////////////////// Handle mqtt stuff //////////////////////////////////
@@ -294,15 +291,12 @@ void mqtt_stuff(){
   client.loop();
 }
 
-
 void resetPID(){
   windowStartTime = millis();
   // Settings for PID
   gaggiaPID.SetOutputLimits(0, WindowSize);
   gaggiaPID.SetMode(AUTOMATIC);
 }
-
-
 
 
 //////////////////////////////////////////////////////////////////////
@@ -315,9 +309,6 @@ void resetPID(){
 void IRAM_ATTR isr_encoder () {
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTime = 0;
-  // Reset Standby Timer as soon as encoder moved
-  // resetStandbyTimer();
-  // unsigned long interruptTime = millis();
   // If interrupts come faster than 50ms, assume it's a bounce and ignore
   if (millis() - lastInterruptTime > 100) { //100
     if (digitalRead(encoder_clk) == HIGH)
@@ -336,9 +327,6 @@ void IRAM_ATTR isr_encoder () {
 void IRAM_ATTR isr_button() {
   portENTER_CRITICAL_ISR(&mux);
   static unsigned long lastInterruptTimeButton = 0;
-  // Reset Standby Timer if encoder moved
-  // resetStandbyTimer();
-  //unsigned long interruptTimeButton = millis();
   // If interrupts come faster than 15ms, assume it's a bounce and ignore
   if (millis() - lastInterruptTimeButton > 15) {
     clicked = true;
@@ -353,11 +341,7 @@ void IRAM_ATTR isr_button() {
 // void IRAM_ATTR isr_standby_timer(void *para) {
 void IRAM_ATTR isr_standby_timer() {
   portENTER_CRITICAL_ISR(&mux);
-  //portENTER_CRITICAL_ISR(&mux);
-  // Reset Standby Timer if encoder moved
-  //state_transition("standby");
   standBy = true;
-  Serial.println("Timer Trigger");
   portEXIT_CRITICAL_ISR(&mux);
 }
 
@@ -388,7 +372,8 @@ void setup() {
   display.init();
   display.flipScreenVertically();
 
-  display.drawString(20,20,"Hallo");
+  display.setFont(ArialMT_Plain_24);
+  display.drawString(10,18,"ESPresso");
   display.display();
   delay(1000);
   // Calculate position of symbols in status bar in settings menu
@@ -430,27 +415,31 @@ void setup() {
 
   resetPID();
 
-  // WiFI and MQTT are each given 5 tries. If there is no connection, disable online_mode
-  for (int i = 0; i < 5; i++){
-    // Setup and connect to WiFi
-    setup_wifi();
-    if(WiFi.isConnected()){
-      break;
-    }
-  }
-  if(WiFi.isConnected()){
+  // Only try to connect to WiFi and MQTT if online_mode is enabled
+
+  if (online_mode){
+    // WiFI and MQTT are each given 5 tries. If there is no connection, disable online_mode
     for (int i = 0; i < 5; i++){
-      // Setup MQTT and subscribe to stated topics
-      setup_mqtt();
-      if(client.connected()){
+      // Setup and connect to WiFi
+      setup_wifi();
+      if(WiFi.isConnected()){
         break;
       }
     }
-  }
-  if (WiFi.isConnected() and client.state()==0){
-    online_mode = true;
-  }else{
-    online_mode = false;
+    if(WiFi.isConnected()){
+      for (int i = 0; i < 5; i++){
+        // Setup MQTT and subscribe to stated topics
+        setup_mqtt();
+        if(client.connected()){
+          break;
+        }
+      }
+    }
+    if (WiFi.isConnected() and client.state()==0){
+      online_mode = true;
+    }else{
+      online_mode = false;
+    }
   }
 
   // Initialize 2 of the 4 available Timers
@@ -463,19 +452,14 @@ void setup() {
   
   // II: Auto-PowerOff Timer
   // Init Timer
-  standby_timer = timerBegin(0,80,true);
+  standby_timer = timerBegin(1,80,true);
   // Attach Interrupt function to timer
   timerAttachInterrupt(standby_timer, &isr_standby_timer, true);
   
-  setAlarm(standby_timer, AUTO_STANDBY_POWER);
-  
-  // Init Timer with AUTO_STANDBY_MAIN [s]
-  // timerAlarmWrite(standby_timer, AUTO_STANDBY_MAIN*1e6, true);
-  // Enable Timer
-  timerAlarmEnable(standby_timer);
-  
+  // Set Timer Alarm to AUTO_STANDBY_MAIN [s]
+  setAlarm(standby_timer, AUTO_STANDBY_MAIN);
 
-  // state_transition("mainMenu");
+  state_transition("mainMenu");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -487,7 +471,6 @@ void setup() {
 void loop(){
   
   if(standBy){
-    // Serial.println("Standby!!!!");
     if (mainMenu){
       state_transition("standby");
     }else{
@@ -495,34 +478,38 @@ void loop(){
     }
     // Do nothing but wait for MQTT commands and reconnect to the Internet
     while(standBy){
-      mqtt_stuff();
-      delay(10);
-      // Serial.println("Standby!!!! Loop");
+      if(online_mode){
+        mqtt_stuff();
+        delay(10);
+      }
+    }
+    if(mainMenu){
+      state_transition("mainMenu"); // necessary to reactivate display when leaving standby through encoder
     }
   }else{
-    state_transition("mainMenu");
+    // state_transition("mainMenu");
       /////////////////////////// MAIN MENU/STANDBY /////////////////////////////
     menuCounter = 1;
     while(mainMenu && !standBy){
       if(anticlockwise){
+        resetStandbyTimer();
         if (menuCounter < 2){
           menuCounter++;
         } else if (menuCounter > 1){
           menuCounter--;
         }
         anticlockwise = false;
-      }
-      if(clockwise){
+      }else if(clockwise){
+        resetStandbyTimer();
         if (menuCounter > 1){
           menuCounter--;
         } else if (menuCounter < 2){
           menuCounter++;
         }
         clockwise = false;
-      }
-      displayMainMenu(1); // 1 is main menu, 2 is Settings menu
-      // If encoder Button is pressed, switch to respective menu
-      if (clicked){
+      }else if (clicked){
+        // If encoder Button is pressed, switch to respective menu
+        resetStandbyTimer();
         switch (menuCounter) {
           case 1: // Power On
             state_transition("powerState");        
@@ -534,23 +521,24 @@ void loop(){
         mainMenu = false;
         clicked = false;      
       }
+      displayMainMenu();
       if(online_mode){
         // Call MQTT handler
         mqtt_stuff();
       }
-      
     }
     /////////////////////////// SETTINGS MENU /////////////////////////////
     while (settingsMenu && !standBy) {
       if (clockwise) {
+        resetStandbyTimer();
         if (menuCounter < numOfSettings + 1) {
           menuCounter++;
         } else if (menuCounter > numOfSettings) {
           menuCounter = 0;
         }
         clockwise = false;
-      }
-      if (anticlockwise) {
+      }else if (anticlockwise) {
+        resetStandbyTimer();
         if (menuCounter > 0) {
           menuCounter--;
         } else if (menuCounter < numOfSettings) {
@@ -609,6 +597,7 @@ void loop(){
         }
       }
       if (clicked) {
+        resetStandbyTimer();
         // int resetIndex = numOfSettings + 1;
         switch (menuCounter) {
           case 0: // User choose return
@@ -656,6 +645,7 @@ void loop(){
     resetPID();
     while (powerState && !standBy) {
       if (clockwise) {
+        resetStandbyTimer();
         if (menuCounter < numOfpowerStates) {
           menuCounter++;
         }else if (menuCounter == numOfpowerStates) {
@@ -664,6 +654,7 @@ void loop(){
         clockwise = false;
       }
       if (anticlockwise) {
+        resetStandbyTimer();
         if (menuCounter > 0) {
           menuCounter--;
         } else if (menuCounter < numOfpowerStates) {
@@ -687,6 +678,7 @@ void loop(){
       }
 
       if (clicked) {
+        resetStandbyTimer();
         switch (menuCounter) {
           case (0): // main menu button
             state_transition("mainMenu");
@@ -721,5 +713,4 @@ void loop(){
       }
     }
   }
-  
 } 

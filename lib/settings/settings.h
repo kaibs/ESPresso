@@ -38,3 +38,4 @@ extern const byte encoder_dt; // GPIO13 ESP32
 // Used for the push button switch
 extern const byte encoder_sw; // GPIO14 ESP32
 
+extern boolean online_mode;
