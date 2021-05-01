@@ -66,7 +66,7 @@ String receivedString;
 unsigned long mqttPubTimer;
 
 // WiFI and MQTT variables
-boolean online_mode = false;
+// boolean online_mode = false;
 
 //mqtt messages
 const uint8_t MSG_BUFFER_SIZE = 50;

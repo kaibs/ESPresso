@@ -1,4 +1,4 @@
-#pragma once
+// #pragma once
 
 #include "settings.h"
 
@@ -13,9 +13,9 @@ const int standardSettings[] = {   90,   50,  10,   5,           0};
 
 // Time [s] after which ESPresso goes to standby from:
 // (1) Main Menu
-const int AUTO_STANDBY_MAIN = 600;
+const int AUTO_STANDBY_MAIN = 5;
 // (2) Power State
-const int AUTO_STANDBY_POWER = 1800;
+const int AUTO_STANDBY_POWER = 5;
 
 // Publish MQTT Data ever (...) seconds
 const uint8_t MQTT_TIMER_MAIN = 20;
@@ -41,5 +41,8 @@ const byte encoder_clk = 27; // GPIO27 ESP32
 const byte encoder_dt = 13; // GPIO13 ESP32
 // Used for the push button switch
 const byte encoder_sw = 14; // GPIO14 ESP32
+
+// If you want to use the WiFi and MQTT features, set this to 'true'
+boolean online_mode = true;
 
 

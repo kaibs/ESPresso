@@ -125,7 +125,7 @@ void displaySettings(int index) {
   display.display();
 }
 ///////////////////////////////displayMainMenu///////////////////////////////////
-void displayMainMenu(byte index) {
+void displayMainMenu() {
   // index == 1 -> mainMenu // Standby
   // index == 2 -> pauseMenu !! nicht mehr existent !!
   display.clear();
